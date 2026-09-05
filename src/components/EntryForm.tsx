@@ -1,6 +1,7 @@
 import { useRef, useState, type FormEvent } from 'react'
 import { parseTenths } from '../domain/money'
 import type { ContributionEntry, Currency } from '../types'
+import { ChatToggle } from './ChatToggle'
 
 interface EntryFormProps {
   onAdd: (entry: ContributionEntry) => void
@@ -12,6 +13,7 @@ export function EntryForm({ onAdd, createId }: EntryFormProps) {
   const [nickname, setNickname] = useState('')
   const [amount, setAmount] = useState('')
   const [currency, setCurrency] = useState<Currency>('RUB')
+  const [isChat, setIsChat] = useState(false)
   const [error, setError] = useState('')
 
   const submit = (event: FormEvent) => {
@@ -32,6 +34,7 @@ export function EntryForm({ onAdd, createId }: EntryFormProps) {
     onAdd({
       id: createId(),
       nickname: cleanNickname,
+      isChat,
       amountTenths,
       currency,
       status: 'active',
@@ -39,6 +42,7 @@ export function EntryForm({ onAdd, createId }: EntryFormProps) {
     setNickname('')
     setAmount('')
     setCurrency('RUB')
+    setIsChat(false)
     setError('')
     requestAnimationFrame(() => nicknameRef.current?.focus())
   }
@@ -78,8 +82,13 @@ export function EntryForm({ onAdd, createId }: EntryFormProps) {
           <option value="EUR">EUR</option>
         </select>
       </div>
+      <ChatToggle
+        checked={isChat}
+        label="Считать новый донат как донат от Chat"
+        onChange={setIsChat}
+      />
       <button className="button primary add-button" type="submit">
-        <span aria-hidden="true">＋</span> ДОБАВИТЬ
+        ДОБАВИТЬ
       </button>
       {error && <p className="form-error">{error}</p>}
     </form>

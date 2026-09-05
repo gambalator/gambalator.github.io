@@ -495,7 +495,7 @@ h3 {
 .entry-form {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(260px, 1.45fr) minmax(150px, 0.65fr) 120px 150px;
+  grid-template-columns: minmax(220px, 1.45fr) minmax(130px, 0.65fr) 105px 100px 150px;
   align-items: end;
   gap: 12px;
   padding: 18px;
@@ -504,15 +504,95 @@ h3 {
   background: linear-gradient(120deg, rgba(250, 117, 219, 0.07), rgba(255, 138, 61, 0.055));
 }
 
+.chat-toggle {
+  position: relative;
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid rgba(255, 216, 77, 0.28);
+  border-radius: 10px;
+  color: var(--yellow);
+  background: rgba(255, 216, 77, 0.045);
+  padding: 0 9px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: 0.025em;
+  user-select: none;
+  transition: border-color 150ms ease, background-color 150ms ease;
+}
+
+.chat-toggle:hover {
+  border-color: rgba(255, 216, 77, 0.55);
+  background: rgba(255, 216, 77, 0.08);
+}
+
+.chat-toggle input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  min-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.chat-toggle-track {
+  position: relative;
+  display: block;
+  flex: 0 0 auto;
+  width: 36px;
+  height: 20px;
+  border: 1px solid rgba(255, 216, 77, 0.65);
+  border-radius: 999px;
+  background: #171925;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+.chat-toggle-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--yellow);
+  transition: transform 150ms ease, background-color 150ms ease;
+}
+
+.chat-toggle.checked {
+  border-color: rgba(255, 216, 77, 0.7);
+  background: rgba(255, 216, 77, 0.12);
+}
+
+.chat-toggle.checked .chat-toggle-track {
+  border-color: var(--yellow);
+  background: var(--yellow);
+}
+
+.chat-toggle.checked .chat-toggle-knob {
+  background: #4a3600;
+  transform: translateX(16px);
+}
+
+.chat-toggle input:focus-visible + .chat-toggle-track {
+  outline: 3px solid rgba(255, 216, 77, 0.38);
+  outline-offset: 2px;
+}
+
+.chat-toggle.compact {
+  width: 86px;
+  min-height: 38px;
+  justify-self: center;
+  padding-inline: 7px;
+}
+
 .add-button {
   height: 44px;
   font-size: 15px;
   letter-spacing: 0.035em;
-}
-
-.add-button span {
-  margin-right: 3px;
-  font-size: 17px;
 }
 
 .form-error {
@@ -653,7 +733,7 @@ h3 {
 }
 
 .active-row {
-  grid-template-columns: 92px minmax(150px, 1fr) minmax(230px, 1.15fr) 92px;
+  grid-template-columns: 92px minmax(130px, 1fr) minmax(190px, 1.15fr) 92px 92px;
   min-height: 76px;
   background: #1d202e;
 }
@@ -665,6 +745,27 @@ h3 {
 .active-row:hover {
   border-color: rgba(250, 117, 219, 0.22);
   background: #222432;
+}
+
+.active-row.chat-attributed {
+  border-color: rgba(255, 216, 77, 0.52);
+  background: linear-gradient(90deg, rgba(255, 216, 77, 0.14), #20212c 48%);
+  box-shadow: inset 3px 0 0 var(--yellow);
+}
+
+.active-row.chat-attributed:hover {
+  border-color: rgba(255, 216, 77, 0.72);
+  background: linear-gradient(90deg, rgba(255, 216, 77, 0.19), #252631 48%);
+}
+
+.active-row.chat-attributed .name-cell,
+.active-row.chat-attributed .row-index {
+  color: var(--yellow);
+}
+
+.active-row.chat-attributed .row-index {
+  border-color: rgba(255, 216, 77, 0.38);
+  background: rgba(255, 216, 77, 0.08);
 }
 
 .active-row.dragging {
@@ -682,9 +783,34 @@ h3 {
 }
 
 .consumed-row .name-cell {
+  display: flex;
+  align-items: center;
+  gap: 9px;
   color: #b8bac5;
   font-size: 16px;
   font-weight: 800;
+}
+
+.consumed-row.chat-consumed {
+  background: linear-gradient(90deg, rgba(255, 216, 77, 0.09), #191b27 52%);
+  box-shadow: inset 2px 0 0 rgba(255, 216, 77, 0.72);
+}
+
+.consumed-row.chat-consumed .name-cell > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-history-badge {
+  flex: 0 0 auto;
+  border: 1px solid rgba(255, 216, 77, 0.38);
+  border-radius: 999px;
+  color: var(--yellow);
+  background: rgba(255, 216, 77, 0.09);
+  padding: 4px 7px;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.035em;
 }
 
 .consumed-row .money-cell {
@@ -905,7 +1031,7 @@ h3 {
 .edit-row-form {
   display: grid;
   grid-column: 1 / -1;
-  grid-template-columns: 92px minmax(150px, 1fr) minmax(230px, 1.15fr) 92px;
+  grid-template-columns: 92px minmax(130px, 1fr) minmax(190px, 1.15fr) 92px 92px;
   align-items: center;
   gap: 0;
 }
@@ -1220,7 +1346,11 @@ footer span {
 
   .active-row,
   .edit-row-form {
-    grid-template-columns: 82px minmax(130px, 1fr) minmax(180px, 1fr) 82px;
+    grid-template-columns: 76px minmax(110px, 1fr) minmax(150px, 1fr) 82px 72px;
+  }
+
+  .chat-toggle.compact {
+    width: 76px;
   }
 }
 

@@ -12,6 +12,7 @@ describe('local storage adapter', () => {
         {
           id: '1',
           nickname: 'Alex',
+          isChat: true,
           amountTenths: 10_000,
           currency: 'RUB',
           status: 'active',
@@ -92,5 +93,27 @@ describe('local storage adapter', () => {
       'older',
       'newer',
     ])
+  })
+
+  it('loads version 3 data with Chat attribution disabled by default', () => {
+    const versionThreeState: AppState = {
+      ...DEFAULT_STATE,
+      entries: [
+        {
+          id: 'existing',
+          nickname: 'ExistingViewer',
+          amountTenths: 500,
+          currency: 'RUB',
+          status: 'active',
+        },
+      ],
+    }
+    localStorage.setItem(
+      'gambalator:state',
+      JSON.stringify({ version: 3, state: versionThreeState }),
+    )
+
+    expect(loadState().state).toEqual(versionThreeState)
+    expect(loadState().state.entries[0]?.isChat).toBeUndefined()
   })
 })

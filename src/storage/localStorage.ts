@@ -9,7 +9,7 @@ import {
 
 const STORAGE_KEY = 'gambalator:state'
 const LEGACY_STORAGE_KEY = 'gambulator:state'
-const SCHEMA_VERSION = 3
+const SCHEMA_VERSION = 4
 
 interface StoredEnvelope {
   version: number
@@ -46,6 +46,7 @@ function isEntry(value: unknown): value is ContributionEntry {
     typeof item.id === 'string' &&
     typeof item.nickname === 'string' &&
     item.nickname.trim().length > 0 &&
+    (item.isChat === undefined || typeof item.isChat === 'boolean') &&
     isPositiveSafeInteger(item.amountTenths) &&
     isCurrency(item.currency) &&
     (item.status === 'active' || item.status === 'consumed')
@@ -99,6 +100,10 @@ export function loadState(storage: Storage = window.localStorage): LoadResult {
           ],
         },
       }
+    }
+
+    if (envelope.version === 3 && isAppState(envelope.state)) {
+      return { state: envelope.state }
     }
 
     if (envelope.version !== SCHEMA_VERSION || !isAppState(envelope.state)) {

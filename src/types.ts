@@ -17,6 +17,7 @@ export interface SourceReference {
 export interface ContributionEntry {
   id: string
   nickname: string
+  isChat?: boolean
   amountTenths: number
   currency: Currency
   status: EntryStatus

@@ -21,6 +21,7 @@ import {
   parseTenths,
 } from '../domain/money'
 import type { ContributionEntry, Currency, Settings } from '../types'
+import { ChatToggle } from './ChatToggle'
 
 interface EntryListProps {
   entries: ContributionEntry[]
@@ -66,12 +67,15 @@ function ConsumedRow({
   const equivalent = rubEquivalent(entry, settings)
 
   return (
-    <div className="entry-row consumed-row">
+    <div className={`entry-row consumed-row${entry.isChat ? ' chat-consumed' : ''}`}>
       <div className="status-cell">
         <span className="row-index">{position}</span>
         <span className="sr-only">Использованная запись</span>
       </div>
-      <div className="name-cell">{entry.nickname}</div>
+      <div className="name-cell">
+        <span>{entry.nickname}</span>
+        {entry.isChat && <span className="chat-history-badge">Chat</span>}
+      </div>
       <div className="money-cell">
         <strong>
           {formatTenths(entry.amountTenths)} {entry.currency}
@@ -104,6 +108,7 @@ function SortableRow({
   const [nickname, setNickname] = useState(entry.nickname)
   const [amount, setAmount] = useState(formatTenths(entry.amountTenths))
   const [currency, setCurrency] = useState<Currency>(entry.currency)
+  const [isChat, setIsChat] = useState(entry.isChat === true)
   const [error, setError] = useState('')
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: entry.id })
@@ -113,10 +118,20 @@ function SortableRow({
     transition,
   }
 
+  const beginEdit = () => {
+    setNickname(entry.nickname)
+    setAmount(formatTenths(entry.amountTenths))
+    setCurrency(entry.currency)
+    setIsChat(entry.isChat === true)
+    setError('')
+    setEditing(true)
+  }
+
   const cancelEdit = () => {
     setNickname(entry.nickname)
     setAmount(formatTenths(entry.amountTenths))
     setCurrency(entry.currency)
+    setIsChat(entry.isChat === true)
     setError('')
     setEditing(false)
   }
@@ -132,6 +147,7 @@ function SortableRow({
     onUpdate({
       id: entry.id,
       nickname: nickname.trim(),
+      isChat,
       amountTenths,
       currency,
       status: 'active',
@@ -147,7 +163,7 @@ function SortableRow({
     <div
       ref={setNodeRef}
       style={style}
-      className={`entry-row active-row${isDragging ? ' dragging' : ''}`}
+      className={`entry-row active-row${entry.isChat ? ' chat-attributed' : ''}${isDragging ? ' dragging' : ''}`}
     >
       {editing ? (
         <form className="edit-row-form" onSubmit={saveEdit}>
@@ -187,6 +203,12 @@ function SortableRow({
             </select>
             {error && <small className="field-error">{error}</small>}
           </div>
+          <ChatToggle
+            checked={isChat}
+            compact
+            label={`Считать донат ${entry.nickname} как донат от Chat`}
+            onChange={setIsChat}
+          />
           <div className="edit-actions">
             <button className="icon-button save" type="submit" aria-label="Сохранить">
               ✓
@@ -225,11 +247,17 @@ function SortableRow({
             )}
             {reference && <small>{reference}</small>}
           </div>
+          <ChatToggle
+            checked={entry.isChat === true}
+            compact
+            label={`Считать донат ${entry.nickname} как донат от Chat`}
+            onChange={(isChat) => onUpdate({ ...entry, isChat })}
+          />
           <div className="row-actions">
             <button
               className="icon-button"
               type="button"
-              onClick={() => setEditing(true)}
+              onClick={beginEdit}
               aria-label={`Изменить запись ${entry.nickname}`}
             >
               ✎

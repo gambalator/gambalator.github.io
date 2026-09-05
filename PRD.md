@@ -14,8 +14,8 @@ The application has no backend. It runs entirely in the browser, persists data l
 
 - Let the user configure a round target and manually maintained EUR/RUB and USD/RUB exchange rates.
 - Make adding contributions fast while allowing active entries to be edited, reordered, or removed.
-- Process contributions in their displayed order into as many complete rounds as possible.
-- Select exactly one result for every completed round: a nickname or `Chat` when the largest total is tied.
+- Process contributions in their canonical queue order into as many complete rounds as possible.
+- Show the largest contributor for every completed round, or all tied nicknames when multiple contributors share the largest total.
 - Clearly distinguish consumed entries from entries still available for future rounds.
 - Preserve the working state after a page refresh without requiring an account or backend.
 
@@ -78,9 +78,10 @@ Fields, in order:
 1. `Никнейм` — text input.
 2. `Сумма` — positive numeric input with one decimal place.
 3. `Валюта` — enum select with `RUB`, `USD`, and `EUR`; default `RUB`.
-4. `ДОБАВИТЬ` — submit button with prominent text.
+4. `Chat` — a golden attribution toggle immediately before the add button; disabled by default.
+5. `ДОБАВИТЬ` — submit button with prominent text.
 
-Pressing Enter from the form has the same effect as pressing `ДОБАВИТЬ`. After a successful addition, the inputs clear and currency returns to `RUB`; keyboard focus returns to the nickname field.
+Pressing Enter from the form has the same effect as pressing `ДОБАВИТЬ`. After a successful addition, the inputs clear, currency returns to `RUB`, and the `Chat` toggle returns to its disabled default; keyboard focus returns to the nickname field.
 
 New donations are stored in chronological order for calculation, but the active queue is rendered in reverse chronological order. For entries added as `1, 2, 3, 4`, the visible list and its labels are `4, 3, 2, 1`. Round calculation continues to process the canonical chronological order `1, 2, 3, 4`, independent of the reversed presentation.
 
@@ -102,7 +103,9 @@ Active rows:
 - Use the normal foreground and background colors.
 - Use large, prominent nickname and amount text and show a visible sequence number.
 - Have a small vertical gap between adjacent rows.
-- Can be edited inline, reordered via drag-and-drop, or removed.
+- Give every row its own golden `Chat` toggle. When enabled, calculate that donation under the shared `Chat` nickname while retaining the typed nickname for identification and later editing.
+- Give Chat-attributed rows a visible golden highlight.
+- Can be edited inline, reordered via drag-and-drop, toggled between individual and Chat attribution, or removed.
 - May only be reordered within the active part of the list.
 
 Consumed rows:
@@ -116,6 +119,7 @@ Consumed rows:
 - Show a visible sequence number when expanded.
 - Group expanded entries into visually distinct `Гамбашар` sections so nicknames from different rounds are clearly separated.
 - Separate adjacent nickname rows within each `Гамбашар` section with a thin line.
+- Mark donations that were attributed to `Chat` when calculated with a persistent golden `Chat` badge and subtle golden row highlight.
 - Do not show decorative dots after entry numbers or at the end of consumed rows.
 
 Controls below or beside the list:
@@ -137,13 +141,13 @@ Show one immutable result item per completed round, in chronological order:
 
 - `Гамбашар 1 — name1 — 3000.0 RUB`
 - `Гамбашар 2 — name4 — 4000.0 RUB`
-- For a tie: `Гамбашар 3 — Chat — 2000.0 RUB`
+- For a tie: `Гамбашар 3 — name2, name3 — 2000.0 RUB`
 
 Repeated winners appear once for every round they win. The control `Очистить историю` removes all result items after confirmation and restarts numbering at Round 1. It does not modify entries or settings.
 
 The `Очистить историю` control uses the same readable text scale as the other list actions.
 
-For a `Chat` result, do not display the tied nicknames. The displayed amount is the equal highest aggregated contribution in that round.
+For a tied result, display every tied nickname in their first-appearance order. The displayed amount is the equal highest aggregated contribution in that round.
 
 ## 6. Calculation rules
 
@@ -183,11 +187,12 @@ Example: `100.0 USD` at `85.5` equals `8550.0 RUB`. If `5000.0 RUB` is needed to
 ### 6.4. Winner selection
 
 - Within each completed round, aggregate all allocated portions by normalized nickname.
+- Attribute every entry with its enabled `Chat` toggle to the shared `Chat` nickname; multiple such entries are combined even when their typed nicknames differ.
 - Normalize nicknames by trimming surrounding spaces and comparing case-insensitively.
 - Preserve and display the spelling from the first matching entry.
 - Do not merge visually similar but different characters, such as Latin `A` and Cyrillic `А`.
 - The nickname with the largest aggregated RUB contribution wins the round.
-- If two or more nicknames share the exact largest value at one-decimal RUB precision, the result is `Chat`.
+- If two or more nicknames share the exact largest value at one-decimal RUB precision, list all of those nicknames in the result.
 - There is exactly one result item for every completed round.
 
 ### 6.5. Reference example
@@ -292,7 +297,7 @@ The first version is acceptable when all of the following are true:
 6. Overflow is carried into later rounds and a single nickname can win multiple rounds.
 7. A partially consumed entry is automatically split into consumed RUB portion(s) and an active RUB remainder.
 8. Multiple rows for the same normalized nickname are combined within each round.
-9. An exact tie for the largest aggregated contribution produces `Chat` without exposing the tied nicknames.
+9. An exact tie for the largest aggregated contribution lists every tied nickname.
 10. An incomplete final round produces no result and its unconsumed entries or portions remain active.
 11. Changing the target or rates does not modify historical results or consumed rows.
 12. Refreshing the page restores all saved settings, entries, ordering, statuses, source references, and results.

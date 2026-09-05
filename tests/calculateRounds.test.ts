@@ -13,8 +13,9 @@ function active(
   nickname: string,
   amountTenths: number,
   currency: Currency = 'RUB',
+  isChat = false,
 ): ContributionEntry {
-  return { id, nickname, amountTenths, currency, status: 'active' }
+  return { id, nickname, amountTenths, currency, status: 'active', isChat }
 }
 
 function idFactory() {
@@ -74,7 +75,7 @@ describe('calculateRounds', () => {
     ])
   })
 
-  it('combines normalized nicknames and returns Chat for the largest tie', () => {
+  it('combines normalized nicknames and lists every nickname in a largest tie', () => {
     const entries = [
       active('1', ' Alex ', 10_000),
       active('2', 'Bob', 20_000),
@@ -85,8 +86,23 @@ describe('calculateRounds', () => {
     const outcome = calculateRounds(entries, settings, 1, idFactory())
 
     expect(outcome.newResults[0]).toMatchObject({
-      winner: 'Chat',
+      winner: 'Alex, Bob',
       winningRubTenths: 20_000,
+    })
+  })
+
+  it('aggregates toggled donations under the Chat nickname', () => {
+    const entries = [
+      active('1', 'Alice', 15_000, 'RUB', true),
+      active('2', 'Bob', 20_000),
+      active('3', 'Carol', 15_000, 'RUB', true),
+    ]
+
+    const outcome = calculateRounds(entries, settings, 1, idFactory())
+
+    expect(outcome.newResults[0]).toMatchObject({
+      winner: 'Chat',
+      winningRubTenths: 30_000,
     })
   })
 
@@ -133,4 +149,3 @@ describe('calculateRounds', () => {
     expect(outcome.entries[0]?.roundNumber).toBe(7)
   })
 })
-

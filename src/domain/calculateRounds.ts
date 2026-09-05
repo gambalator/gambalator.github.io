@@ -44,22 +44,20 @@ function sourceFor(
 function selectWinner(
   totals: Map<string, RoundContribution>,
 ): Pick<RoundResult, 'winner' | 'winningRubTenths'> {
-  let winner = ''
   let winningRubTenths = -1
-  let tied = false
 
   for (const contribution of totals.values()) {
     if (contribution.rubTenths > winningRubTenths) {
-      winner = contribution.displayName
       winningRubTenths = contribution.rubTenths
-      tied = false
-    } else if (contribution.rubTenths === winningRubTenths) {
-      tied = true
     }
   }
 
+  const winners = [...totals.values()]
+    .filter((contribution) => contribution.rubTenths === winningRubTenths)
+    .map((contribution) => contribution.displayName)
+
   return {
-    winner: tied ? 'Chat' : winner,
+    winner: winners.join(', '),
     winningRubTenths,
   }
 }
@@ -137,11 +135,12 @@ export function calculateRounds(
 
     while (entryRemaining > 0 && amountLeftToConsume > 0) {
       const allocated = Math.min(entryRemaining, roundRemaining)
-      const key = normalizeNickname(entry.nickname)
+      const attributedNickname = entry.isChat ? 'Chat' : entry.nickname
+      const key = normalizeNickname(attributedNickname)
       const prior = roundTotals.get(key)
 
       roundTotals.set(key, {
-        displayName: prior?.displayName ?? entry.nickname.trim(),
+        displayName: prior?.displayName ?? attributedNickname.trim(),
         rubTenths: (prior?.rubTenths ?? 0) + allocated,
       })
       segments.push({ roundNumber, rubTenths: allocated })
@@ -173,6 +172,7 @@ export function calculateRounds(
         newConsumed.push({
           id: createId(),
           nickname: entry.nickname,
+          isChat: entry.isChat,
           amountTenths: segment.rubTenths,
           currency: 'RUB',
           status: 'consumed',
@@ -186,6 +186,7 @@ export function calculateRounds(
         remainingActive.push({
           id: createId(),
           nickname: entry.nickname,
+          isChat: entry.isChat,
           amountTenths: entryRemaining,
           currency: 'RUB',
           status: 'active',
@@ -208,4 +209,3 @@ export function calculateRounds(
         : settings.roundTargetTenths - unfinishedRubTenths,
   }
 }
-

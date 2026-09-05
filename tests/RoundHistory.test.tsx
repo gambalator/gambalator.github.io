@@ -35,4 +35,23 @@ describe('RoundHistory', () => {
       'latest-winner',
     )
   })
+
+  it('shows every nickname from a tied result', () => {
+    render(
+      <RoundHistory
+        onClear={vi.fn()}
+        history={[
+          {
+            id: 'tie',
+            roundNumber: 1,
+            winner: 'Alice, Bob',
+            winningRubTenths: 25_000,
+            targetRubTenths: 50_000,
+          },
+        ]}
+      />,
+    )
+
+    expect(screen.getByText('Alice, Bob')).toBeInTheDocument()
+  })
 })

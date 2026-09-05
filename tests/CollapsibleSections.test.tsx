@@ -112,4 +112,54 @@ describe('collapsible sections', () => {
     expect(newer.querySelector('.row-index')).toHaveTextContent('2')
     expect(older.querySelector('.row-index')).toHaveTextContent('1')
   })
+
+  it('highlights and updates an active donation attributed to Chat', async () => {
+    const user = userEvent.setup()
+    const onUpdate = vi.fn()
+    const entry: ContributionEntry = {
+      id: 'chat-entry',
+      nickname: 'Viewer',
+      amountTenths: 500,
+      currency: 'RUB',
+      status: 'active',
+      isChat: true,
+    }
+
+    render(
+      <EntryList
+        entries={[entry]}
+        settings={DEFAULT_SETTINGS}
+        onUpdate={onUpdate}
+        onRemove={vi.fn()}
+        onReorder={vi.fn()}
+      />,
+    )
+
+    const row = screen.getByText('Viewer').closest('.entry-row')
+    expect(row).toHaveClass('chat-attributed')
+
+    await user.click(screen.getByLabelText('Считать донат Viewer как донат от Chat'))
+    expect(onUpdate).toHaveBeenCalledWith({ ...entry, isChat: false })
+  })
+
+  it('marks a consumed donation that was attributed to Chat', async () => {
+    const user = userEvent.setup()
+    const entry: ContributionEntry = {
+      id: 'used-chat-entry',
+      nickname: 'Viewer',
+      amountTenths: 500,
+      currency: 'RUB',
+      status: 'consumed',
+      roundNumber: 1,
+      frozenRubTenths: 500,
+      isChat: true,
+    }
+
+    render(<UsedEntries entries={[entry]} settings={DEFAULT_SETTINGS} />)
+    await user.click(screen.getByRole('button', { name: /ИСТОРИЯ/ }))
+
+    const row = screen.getByText('Viewer').closest('.entry-row')
+    expect(row).toHaveClass('chat-consumed')
+    expect(row).toHaveTextContent('Chat')
+  })
 })
