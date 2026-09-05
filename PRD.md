@@ -130,6 +130,7 @@ Show one immutable result item per completed round, in chronological order:
 
 - Each item has a visible sequence number and uses large winner-name text.
 - Render every round result as a visually separate row or card.
+- When the winner panel becomes narrow, shorten `Гамбашар N` to `N` and allow the winner nickname to wrap instead of hiding it.
 - After a successful calculation, newly produced winners remain bright while all winners from earlier calculations become pale. A calculation that completes no rounds does not change history emphasis.
 
 - `Гамбашар 1 — name1 — 3000.0 RUB`

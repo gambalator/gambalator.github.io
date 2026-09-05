@@ -955,6 +955,8 @@ h3 {
   position: sticky;
   top: 18px;
   overflow: hidden;
+  container-name: winner-history;
+  container-type: inline-size;
   border: 1px solid var(--border-soft);
   border-radius: 14px;
   background: #12141e;
@@ -1152,6 +1154,29 @@ footer {
 
 footer span {
   margin: 0 8px;
+}
+
+@container winner-history (max-width: 400px) {
+  .history-list li {
+    grid-template-columns: 30px 18px minmax(0, 1fr) auto;
+    gap: 8px;
+    padding-inline: 10px;
+  }
+
+  .history-list .round-number {
+    font-size: 14px;
+    text-align: center;
+  }
+
+  .history-list .round-label {
+    display: none;
+  }
+
+  .history-list strong {
+    overflow: visible;
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+  }
 }
 
 .sr-only {

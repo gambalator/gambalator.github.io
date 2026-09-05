@@ -34,7 +34,10 @@ export function RoundHistory({ history, onClear }: RoundHistoryProps) {
               className={result.isLatest === false ? 'previous-winner' : 'latest-winner'}
             >
               <span className="history-index">{index + 1}</span>
-              <span className="round-number">Гамбашар {result.roundNumber}</span>
+              <span className="round-number">
+                <span className="round-label">Гамбашар </span>
+                {result.roundNumber}
+              </span>
               <strong className={result.winner === 'Chat' ? 'chat-winner' : ''}>
                 {result.winner}
               </strong>
