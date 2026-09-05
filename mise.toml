@@ -1,0 +1,33 @@
+[tools]
+node = "24"
+npm = "11"
+
+[tasks.setup]
+description = "Install locked project dependencies"
+run = "npm ci"
+
+[tasks.dev]
+description = "Start the Vite development server"
+run = "npm run dev"
+
+[tasks.typecheck]
+description = "Check TypeScript types"
+run = "npm run typecheck"
+
+[tasks.lint]
+description = "Lint the source tree"
+run = "npm run lint"
+
+[tasks.test]
+description = "Run the test suite"
+run = "npm run test"
+
+[tasks.build]
+description = "Create the production build"
+run = "npm run build"
+
+[tasks.check]
+description = "Run every CI quality check"
+depends = ["typecheck", "lint", "test"]
+run = "npm run build"
+

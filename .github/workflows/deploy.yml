@@ -1,0 +1,62 @@
+name: Check and deploy Gambalator
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+      - name: Install mise toolchain
+        uses: jdx/mise-action@v3
+        with:
+          install: true
+          cache: true
+      - name: Install dependencies
+        run: mise run setup
+      - name: Run checks
+        run: mise run check
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: check
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+      - name: Install mise toolchain
+        uses: jdx/mise-action@v3
+        with:
+          install: true
+          cache: true
+      - name: Install dependencies
+        run: mise run setup
+      - name: Build site
+        run: mise run build
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
