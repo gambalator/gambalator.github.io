@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { RoundHistory } from '../src/components/RoundHistory'
 
 describe('RoundHistory', () => {
-  it('visually distinguishes earlier winners from the latest batch', () => {
+  it('shows newest winners first without line-number badges', () => {
     render(
       <RoundHistory
         onClear={vi.fn()}
@@ -28,12 +28,16 @@ describe('RoundHistory', () => {
       />,
     )
 
-    expect(screen.getByText('OldWinner').closest('li')).toHaveClass(
-      'previous-winner',
-    )
-    expect(screen.getByText('NewWinner').closest('li')).toHaveClass(
-      'latest-winner',
-    )
+    const oldWinner = screen.getByText('OldWinner').closest('li')
+    const newWinner = screen.getByText('NewWinner').closest('li')
+    expect(oldWinner).toHaveClass('previous-winner')
+    expect(newWinner).toHaveClass('latest-winner')
+    if (!oldWinner || !newWinner) throw new Error('Expected both winner rows')
+    expect(
+      newWinner.compareDocumentPosition(oldWinner) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    expect(document.querySelector('.history-index')).not.toBeInTheDocument()
   })
 
   it('shows every nickname from a tied result', () => {

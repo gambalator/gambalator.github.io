@@ -18,6 +18,7 @@ import { useState, type CSSProperties, type FormEvent } from 'react'
 import {
   convertToRubTenths,
   formatTenths,
+  normalizeNickname,
   parseTenths,
 } from '../domain/money'
 import type { ContributionEntry, Currency, Settings } from '../types'
@@ -54,14 +55,39 @@ function rubEquivalent(entry: ContributionEntry, settings: Settings): number {
   )
 }
 
+function attributedNickname(entry: ContributionEntry): string {
+  return entry.isChat ? 'Chat' : entry.nickname
+}
+
+function winnerKeysFor(
+  items: Array<{ entry: ContributionEntry; position: number }>,
+  settings: Settings,
+): Set<string> {
+  const totals = new Map<string, number>()
+
+  for (const { entry } of items) {
+    const key = normalizeNickname(attributedNickname(entry))
+    totals.set(key, (totals.get(key) ?? 0) + rubEquivalent(entry, settings))
+  }
+
+  const largest = Math.max(...totals.values())
+  return new Set(
+    [...totals.entries()]
+      .filter(([, total]) => total === largest)
+      .map(([key]) => key),
+  )
+}
+
 function ConsumedRow({
   entry,
   settings,
   position,
+  isWinner,
 }: {
   entry: ContributionEntry
   settings: Settings
   position: number
+  isWinner: boolean
 }) {
   const reference = referenceText(entry)
   const equivalent = rubEquivalent(entry, settings)
@@ -72,7 +98,7 @@ function ConsumedRow({
         <span className="row-index">{position}</span>
         <span className="sr-only">Использованная запись</span>
       </div>
-      <div className="name-cell">
+      <div className={`name-cell${isWinner ? ' round-winner' : ''}`}>
         <span>{entry.nickname}</span>
         {entry.isChat && <span className="chat-history-badge">Chat</span>}
       </div>
@@ -347,22 +373,24 @@ export function EntryList({
 export function UsedEntries({ entries, settings }: UsedEntriesProps) {
   const [expanded, setExpanded] = useState(false)
   const consumed = entries.filter((entry) => entry.status === 'consumed')
-  const groupedByRound = consumed.reduce<
-    Array<{
-      roundNumber: number
-      items: Array<{ entry: ContributionEntry; position: number }>
-    }>
-  >((groups, entry, index) => {
+  const groupsByRound = new Map<
+    number,
+    Array<{ entry: ContributionEntry; position: number }>
+  >()
+
+  consumed.forEach((entry, index) => {
     const roundNumber = entry.roundNumber ?? 0
-    const currentGroup = groups.at(-1)
     const item = { entry, position: index + 1 }
-    if (currentGroup?.roundNumber === roundNumber) {
-      currentGroup.items.push(item)
-    } else {
-      groups.push({ roundNumber, items: [item] })
-    }
-    return groups
-  }, [])
+    groupsByRound.set(roundNumber, [...(groupsByRound.get(roundNumber) ?? []), item])
+  })
+
+  const groupedByRound = [...groupsByRound.entries()]
+    .map(([roundNumber, items]) => ({
+      roundNumber,
+      items,
+      winnerKeys: winnerKeysFor(items, settings),
+    }))
+    .sort((first, second) => second.roundNumber - first.roundNumber)
 
   if (consumed.length === 0) return null
 
@@ -376,7 +404,7 @@ export function UsedEntries({ entries, settings }: UsedEntriesProps) {
       >
         <span>ИСТОРИЯ</span>
         <span className="used-toggle-meta">
-          {consumed.length}
+          {groupedByRound.length}
           <span className={`chevron${expanded ? ' open' : ''}`} aria-hidden="true">⌄</span>
         </span>
       </button>
@@ -392,6 +420,9 @@ export function UsedEntries({ entries, settings }: UsedEntriesProps) {
                 entry={entry}
                 settings={settings}
                 position={position}
+                isWinner={group.winnerKeys.has(
+                  normalizeNickname(attributedNickname(entry)),
+                )}
               />
             ))}
           </div>

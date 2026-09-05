@@ -28,12 +28,11 @@ export function RoundHistory({ history, onClear }: RoundHistoryProps) {
         </div>
       ) : (
         <ol className="history-list">
-          {history.map((result, index) => (
+          {[...history].reverse().map((result) => (
             <li
               key={result.id}
               className={result.isLatest === false ? 'previous-winner' : 'latest-winner'}
             >
-              <span className="history-index">{index + 1}</span>
               <span className="round-number">
                 <span className="round-label">Гамбашар </span>
                 {result.roundNumber}

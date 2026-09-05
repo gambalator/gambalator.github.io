@@ -504,6 +504,30 @@ h3 {
   background: linear-gradient(120deg, rgba(250, 117, 219, 0.07), rgba(255, 138, 61, 0.055));
 }
 
+.section-divider,
+.used-section::before {
+  display: block;
+  width: 82%;
+  height: 1px;
+  margin-inline: auto;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(250, 117, 219, 0.34) 18%,
+    rgba(255, 216, 77, 0.38) 50%,
+    rgba(255, 138, 61, 0.34) 82%,
+    transparent
+  );
+}
+
+.form-divider {
+  margin-top: 24px;
+}
+
+.entries-divider {
+  margin-top: 24px;
+}
+
 .chat-toggle {
   position: relative;
   display: flex;
@@ -623,7 +647,7 @@ h3 {
   display: grid;
   grid-template-columns: minmax(0, 1.7fr) minmax(300px, 0.72fr);
   gap: 18px;
-  margin-top: 30px;
+  margin-top: 24px;
   align-items: start;
 }
 
@@ -650,7 +674,12 @@ h3 {
 }
 
 .used-section {
-  margin-top: 20px;
+  margin-top: 24px;
+}
+
+.used-section::before {
+  content: '';
+  margin-bottom: 20px;
 }
 
 .used-toggle {
@@ -799,6 +828,23 @@ h3 {
 .consumed-row.chat-consumed .name-cell > span:first-child {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.consumed-row .name-cell.round-winner > span:first-child {
+  color: var(--accent);
+  font-size: 18px;
+  text-shadow: 0 0 18px rgba(250, 117, 219, 0.3);
+}
+
+.consumed-row.chat-consumed .name-cell.round-winner > span:first-child {
+  color: var(--yellow);
+  text-shadow: 0 0 18px rgba(255, 216, 77, 0.32);
+}
+
+.consumed-row .name-cell.round-winner .chat-history-badge {
+  border-color: rgba(255, 216, 77, 0.68);
+  background: rgba(255, 216, 77, 0.16);
+  box-shadow: 0 0 16px rgba(255, 216, 77, 0.14);
 }
 
 .chat-history-badge {
@@ -956,8 +1002,7 @@ h3 {
   gap: 5px;
 }
 
-.row-index,
-.history-index {
+.row-index {
   display: grid;
   flex: 0 0 auto;
   width: 27px;
@@ -1091,8 +1136,6 @@ h3 {
   position: sticky;
   top: 18px;
   overflow: hidden;
-  container-name: winner-history;
-  container-type: inline-size;
   border: 1px solid var(--border-soft);
   border-radius: 14px;
   background: #12141e;
@@ -1146,10 +1189,14 @@ h3 {
 
 .history-list li {
   display: grid;
-  grid-template-columns: 30px 86px 1fr auto;
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'round round'
+    'winner amount';
+  column-gap: 10px;
+  row-gap: 7px;
   align-items: center;
-  min-height: 66px;
+  min-height: 86px;
   border: 1px solid var(--border-soft);
   border-radius: 11px;
   background: #191b27;
@@ -1173,25 +1220,22 @@ h3 {
 }
 
 .history-list .round-number {
+  grid-area: round;
+  border-bottom: 1px solid rgba(255, 138, 61, 0.13);
   color: var(--orange);
-  font-size: 12px;
+  padding-bottom: 6px;
+  font-size: 11px;
   font-weight: 700;
+  letter-spacing: 0.035em;
 }
 
 .history-list strong {
-  overflow: hidden;
+  grid-area: winner;
+  min-width: 0;
+  overflow: visible;
   color: var(--accent);
   font-size: 22px;
-  text-overflow: ellipsis;
-}
-
-.history-index {
-  width: 25px;
-  height: 25px;
-  border-color: rgba(255, 138, 61, 0.22);
-  color: var(--orange);
-  background: rgba(255, 138, 61, 0.06);
-  font-size: 11px;
+  overflow-wrap: anywhere;
 }
 
 .history-list strong.chat-winner {
@@ -1199,6 +1243,7 @@ h3 {
 }
 
 .history-list li > span:last-child {
+  grid-area: amount;
   color: var(--muted-strong);
   font-size: 16px;
   font-weight: 800;
@@ -1290,29 +1335,6 @@ footer {
 
 footer span {
   margin: 0 8px;
-}
-
-@container winner-history (max-width: 400px) {
-  .history-list li {
-    grid-template-columns: 30px 18px minmax(0, 1fr) auto;
-    gap: 8px;
-    padding-inline: 10px;
-  }
-
-  .history-list .round-number {
-    font-size: 14px;
-    text-align: center;
-  }
-
-  .history-list .round-label {
-    display: none;
-  }
-
-  .history-list strong {
-    overflow: visible;
-    overflow-wrap: anywhere;
-    text-overflow: clip;
-  }
 }
 
 .sr-only {

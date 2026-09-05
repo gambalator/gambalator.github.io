@@ -161,5 +161,72 @@ describe('collapsible sections', () => {
     const row = screen.getByText('Viewer').closest('.entry-row')
     expect(row).toHaveClass('chat-consumed')
     expect(row).toHaveTextContent('Chat')
+    expect(screen.getByText('Viewer').closest('.name-cell')).toHaveClass(
+      'round-winner',
+    )
+  })
+
+  it('shows newest consumed groups first and highlights each winner', async () => {
+    const user = userEvent.setup()
+    const entries: ContributionEntry[] = [
+      {
+        id: 'round-1-winner',
+        nickname: 'Alice',
+        amountTenths: 300,
+        currency: 'RUB',
+        status: 'consumed',
+        roundNumber: 1,
+        frozenRubTenths: 300,
+      },
+      {
+        id: 'round-1-other',
+        nickname: 'Bob',
+        amountTenths: 200,
+        currency: 'RUB',
+        status: 'consumed',
+        roundNumber: 1,
+        frozenRubTenths: 200,
+      },
+      {
+        id: 'round-2-other',
+        nickname: 'Carol',
+        amountTenths: 100,
+        currency: 'RUB',
+        status: 'consumed',
+        roundNumber: 2,
+        frozenRubTenths: 100,
+      },
+      {
+        id: 'round-2-winner',
+        nickname: 'Dana',
+        amountTenths: 400,
+        currency: 'RUB',
+        status: 'consumed',
+        roundNumber: 2,
+        frozenRubTenths: 400,
+      },
+    ]
+
+    render(<UsedEntries entries={entries} settings={DEFAULT_SETTINGS} />)
+    const historyToggle = screen.getByRole('button', { name: /ИСТОРИЯ/ })
+    expect(historyToggle).toHaveTextContent('2')
+    await user.click(historyToggle)
+
+    const newerGroup = screen.getByText('Гамбашар 2').closest('.used-round-group')
+    const olderGroup = screen.getByText('Гамбашар 1').closest('.used-round-group')
+    if (!newerGroup || !olderGroup) throw new Error('Expected both round groups')
+    expect(
+      newerGroup.compareDocumentPosition(olderGroup) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    expect(screen.getByText('Dana').closest('.name-cell')).toHaveClass(
+      'round-winner',
+    )
+    expect(screen.getByText('Alice').closest('.name-cell')).toHaveClass(
+      'round-winner',
+    )
+    expect(screen.getByText('Bob').closest('.name-cell')).not.toHaveClass(
+      'round-winner',
+    )
   })
 })

@@ -7,6 +7,7 @@ import { RoundHistory } from './components/RoundHistory'
 import { SettingsPanel } from './components/SettingsPanel'
 import { calculateRounds } from './domain/calculateRounds'
 import { formatTenths } from './domain/money'
+import { nextRoundNumber } from './domain/nextRoundNumber'
 import { appReducer } from './state'
 import { loadState, saveState } from './storage/localStorage'
 
@@ -45,7 +46,7 @@ export default function App() {
       const outcome = calculateRounds(
         state.entries,
         state.settings,
-        state.history.length + 1,
+        nextRoundNumber(state.entries, state.history),
         createId,
       )
 
@@ -152,7 +153,7 @@ export default function App() {
             </div>
             <div className="count-pills" aria-label="Состояние записей">
               <span>{activeCount} активных</span>
-              <span>{consumedCount} использовано</span>
+              <span>{consumedCount} учтено</span>
             </div>
           </div>
 
@@ -163,6 +164,8 @@ export default function App() {
               setFeedback(null)
             }}
           />
+
+          <div className="section-divider form-divider" aria-hidden="true" />
 
           <div className="workspace-grid">
             <div className="entries-column">
@@ -175,6 +178,8 @@ export default function App() {
                   dispatch({ type: 'entry/reorder', activeId, overId })
                 }
               />
+
+              <div className="section-divider entries-divider" aria-hidden="true" />
 
               {feedback && (
                 <div className={`feedback ${feedback.tone}`} role="status">

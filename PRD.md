@@ -69,7 +69,11 @@ Use a compact, directly editable rate table rather than unlabeled standalone fie
 
 This component contains the fast-entry form, contribution list, calculation controls, and result history.
 
+Use centered, inset divider lines between the fast-entry form, active entries, calculation controls, and consumed-entry `ИСТОРИЯ`. Dividers must be visibly narrower than their containing content area.
+
 Its visible section title is `Очередь донатов`; do not show a separate `Взносы` heading.
+
+The section summary shows the number of active donation rows as `N активных` and the number of consumed donation rows as `N учтено`.
 
 #### Fast-entry form
 
@@ -113,13 +117,14 @@ Consumed rows:
 - Use a visibly pale style while retaining readable contrast.
 - Do not show a visible `Использовано` status word inside each row; use larger nickname, amount, and round text instead.
 - Are locked: they cannot be edited, reordered, or individually removed.
-- Appear below the active rows in their historical processing order.
+- Appear below the active rows, grouped by decreasing `Гамбашар` number so the newest group is first; rows within each group retain their historical processing order.
 - Appear below the calculation and cleanup buttons.
-- Are collapsed by default into a single `ИСТОРИЯ` title line and can be expanded or collapsed by the user.
+- Are collapsed by default into a single `ИСТОРИЯ` title line and can be expanded or collapsed by the user. Its counter shows the number of `Гамбашар` groups, not the number of consumed donation rows.
 - Show a visible sequence number when expanded.
 - Group expanded entries into visually distinct `Гамбашар` sections so nicknames from different rounds are clearly separated.
 - Separate adjacent nickname rows within each `Гамбашар` section with a thin line.
 - Mark donations that were attributed to `Chat` when calculated with a persistent golden `Chat` badge and subtle golden row highlight.
+- Highlight the nickname whose aggregated contribution won each group; highlight every tied winner, and the `Chat` attribution marker when Chat won.
 - Do not show decorative dots after entry numbers or at the end of consumed rows.
 
 Controls below or beside the list:
@@ -132,18 +137,18 @@ Controls below or beside the list:
 
 The section title is `История победителей`.
 
-Show one immutable result item per completed round, in chronological order:
+Show one immutable result item per completed round in decreasing round order, with the newest result first:
 
-- Each item has a visible sequence number and uses large winner-name text.
+- Each item uses large winner-name text and does not show a separate line-number badge.
 - Render every round result as a visually separate row or card.
-- When the winner panel becomes narrow, shorten `Гамбашар N` to `N` and allow the winner nickname to wrap instead of hiding it.
+- Place `Гамбашар N` on its own subtitle line above the result row, leaving the row width for the winner nickname and amount. Allow long winner nicknames to wrap instead of hiding them.
 - After a successful calculation, newly produced winners remain bright while all winners from earlier calculations become pale. A calculation that completes no rounds does not change history emphasis.
 
-- `Гамбашар 1 — name1 — 3000.0 RUB`
-- `Гамбашар 2 — name4 — 4000.0 RUB`
-- For a tie: `Гамбашар 3 — name2, name3 — 2000.0 RUB`
+- `Гамбашар 1 — Chel_1 — 3000.0 RUB`
+- `Гамбашар 2 — Chel_4 — 4000.0 RUB`
+- For a tie: `Гамбашар 3 — Chel_2, Chel_3 — 2000.0 RUB`
 
-Repeated winners appear once for every round they win. The control `Очистить историю` removes all result items after confirmation and restarts numbering at Round 1. It does not modify entries or settings.
+Repeated winners appear once for every round they win. The control `Очистить историю` removes all winner result items after confirmation but does not modify entries or settings. The next round number continues after the highest round still present in either winner history or consumed-entry `ИСТОРИЯ`; numbering restarts at 1 only when both are empty.
 
 The `Очистить историю` control uses the same readable text scale as the other list actions.
 
@@ -201,16 +206,16 @@ Round target: `5000.0 RUB`.
 
 | Order | Nickname | Contribution |
 | ---: | --- | ---: |
-| 1 | name1 | 3000.0 RUB |
-| 2 | name2 | 1000.0 RUB |
-| 3 | name3 | 1000.0 RUB |
-| 4 | name4 | 4000.0 RUB |
-| 5 | name5 | 1000.0 RUB |
+| 1 | Chel_1 | 3000.0 RUB |
+| 2 | Chel_2 | 1000.0 RUB |
+| 3 | Chel_3 | 1000.0 RUB |
+| 4 | Chel_4 | 4000.0 RUB |
+| 5 | Chel_5 | 1000.0 RUB |
 
 Expected results:
 
-1. `Гамбашар 1 — name1 — 3000.0 RUB`
-2. `Гамбашар 2 — name4 — 4000.0 RUB`
+1. `Гамбашар 1 — Chel_1 — 3000.0 RUB`
+2. `Гамбашар 2 — Chel_4 — 4000.0 RUB`
 
 ## 7. Validation and error handling
 
@@ -293,7 +298,7 @@ The first version is acceptable when all of the following are true:
 2. The user can quickly add a valid row with the button or Enter.
 3. The user can edit, remove, and drag active rows into a new order.
 4. Consumed rows are pale, explicitly marked, fixed, and locked.
-5. The reference example produces `name1` for Round 1 and `name4` for Round 2.
+5. The reference example produces `Chel_1` for Round 1 and `Chel_4` for Round 2.
 6. Overflow is carried into later rounds and a single nickname can win multiple rounds.
 7. A partially consumed entry is automatically split into consumed RUB portion(s) and an active RUB remainder.
 8. Multiple rows for the same normalized nickname are combined within each round.
