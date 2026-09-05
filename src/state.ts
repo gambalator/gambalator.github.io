@@ -75,7 +75,10 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return {
         ...state,
         entries: action.entries,
-        history: [...state.history, ...action.results],
+        history: [
+          ...state.history.map((result) => ({ ...result, isLatest: false })),
+          ...action.results.map((result) => ({ ...result, isLatest: true })),
+        ],
       }
     case 'used/clear':
       return {

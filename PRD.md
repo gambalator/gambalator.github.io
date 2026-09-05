@@ -99,6 +99,7 @@ Active rows:
 
 - Use the normal foreground and background colors.
 - Use large, prominent nickname and amount text and show a visible sequence number.
+- Have a small vertical gap between adjacent rows.
 - Can be edited inline, reordered via drag-and-drop, or removed.
 - May only be reordered within the active part of the list.
 
@@ -108,8 +109,12 @@ Consumed rows:
 - Do not show a visible `Использовано` status word inside each row; use larger nickname, amount, and round text instead.
 - Are locked: they cannot be edited, reordered, or individually removed.
 - Appear below the active rows in their historical processing order.
-- Are collapsed by default into a single `Использованные записи` title line and can be expanded or collapsed by the user.
+- Appear below the calculation and cleanup buttons.
+- Are collapsed by default into a single `ИСТОРИЯ` title line and can be expanded or collapsed by the user.
 - Show a visible sequence number when expanded.
+- Group expanded entries into visually distinct `Гамбашар` sections so nicknames from different rounds are clearly separated.
+- Separate adjacent nickname rows within each `Гамбашар` section with a thin line.
+- Do not show decorative dots after entry numbers or at the end of consumed rows.
 
 Controls below or beside the list:
 
@@ -124,6 +129,8 @@ The section title is `История победителей`.
 Show one immutable result item per completed round, in chronological order:
 
 - Each item has a visible sequence number and uses large winner-name text.
+- Render every round result as a visually separate row or card.
+- After a successful calculation, newly produced winners remain bright while all winners from earlier calculations become pale. A calculation that completes no rounds does not change history emphasis.
 
 - `Гамбашар 1 — name1 — 3000.0 RUB`
 - `Гамбашар 2 — name4 — 4000.0 RUB`

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useReducer, useState } from 'react'
 import { EntryForm } from './components/EntryForm'
-import { EntryList } from './components/EntryList'
+import { EntryList, UsedEntries } from './components/EntryList'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { RoundHistory } from './components/RoundHistory'
 import { SettingsPanel } from './components/SettingsPanel'
@@ -212,6 +212,7 @@ export default function App() {
                   </button>
                 </div>
               </div>
+              <UsedEntries entries={state.entries} settings={state.settings} />
               <p className="local-note">
                 Данные сохраняются только в этом браузере и на этом устройстве.
               </p>

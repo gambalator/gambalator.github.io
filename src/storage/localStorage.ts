@@ -60,7 +60,8 @@ function isResult(value: unknown): value is RoundResult {
     isPositiveSafeInteger(item.roundNumber) &&
     typeof item.winner === 'string' &&
     isPositiveSafeInteger(item.winningRubTenths) &&
-    isPositiveSafeInteger(item.targetRubTenths)
+    isPositiveSafeInteger(item.targetRubTenths) &&
+    (item.isLatest === undefined || typeof item.isLatest === 'boolean')
   )
 }
 

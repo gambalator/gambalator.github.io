@@ -32,6 +32,7 @@ export interface RoundResult {
   winner: string
   winningRubTenths: number
   targetRubTenths: number
+  isLatest?: boolean
 }
 
 export interface AppState {
@@ -51,4 +52,3 @@ export const DEFAULT_STATE: AppState = {
   entries: [],
   history: [],
 }
-

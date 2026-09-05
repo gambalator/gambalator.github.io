@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import { EntryList } from '../src/components/EntryList'
+import { EntryList, UsedEntries } from '../src/components/EntryList'
 import { SettingsPanel } from '../src/components/SettingsPanel'
 import { DEFAULT_SETTINGS, type ContributionEntry } from '../src/types'
 
@@ -48,18 +48,21 @@ describe('collapsible sections', () => {
     ]
 
     render(
-      <EntryList
-        entries={entries}
-        settings={DEFAULT_SETTINGS}
-        onUpdate={vi.fn()}
-        onRemove={vi.fn()}
-        onReorder={vi.fn()}
-      />,
+      <>
+        <EntryList
+          entries={entries}
+          settings={DEFAULT_SETTINGS}
+          onUpdate={vi.fn()}
+          onRemove={vi.fn()}
+          onReorder={vi.fn()}
+        />
+        <UsedEntries entries={entries} settings={DEFAULT_SETTINGS} />
+      </>,
     )
 
     const activeTitle = screen.getByText('Активные записи')
     const usedToggle = screen.getByRole('button', {
-      name: /Использованные записи/,
+      name: /ИСТОРИЯ/,
     })
     expect(
       activeTitle.compareDocumentPosition(usedToggle) & Node.DOCUMENT_POSITION_FOLLOWING,

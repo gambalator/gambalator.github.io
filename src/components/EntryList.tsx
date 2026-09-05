@@ -30,6 +30,11 @@ interface EntryListProps {
   onReorder: (activeId: string, overId: string) => void
 }
 
+interface UsedEntriesProps {
+  entries: ContributionEntry[]
+  settings: Settings
+}
+
 function referenceText(entry: ContributionEntry): string | null {
   if (entry.sourceReference) {
     const source = entry.sourceReference
@@ -64,7 +69,6 @@ function ConsumedRow({
     <div className="entry-row consumed-row">
       <div className="status-cell">
         <span className="row-index">{position}</span>
-        <span className="status-dot" aria-hidden="true" />
         <span className="sr-only">Использованная запись</span>
       </div>
       <div className="name-cell">{entry.nickname}</div>
@@ -76,10 +80,6 @@ function ConsumedRow({
           <small>≈ {formatTenths(equivalent)} RUB</small>
         )}
         {reference && <small>{reference}</small>}
-      </div>
-      <div className="round-cell">Гамбашар {entry.roundNumber}</div>
-      <div className="locked-cell" aria-label="Запись заблокирована">
-        <span aria-hidden="true">●</span>
       </div>
     </div>
   )
@@ -256,12 +256,10 @@ export function EntryList({
   onRemove,
   onReorder,
 }: EntryListProps) {
-  const [usedExpanded, setUsedExpanded] = useState(false)
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
-  const consumed = entries.filter((entry) => entry.status === 'consumed')
   const active = entries
     .filter((entry) => entry.status === 'active')
     .reverse()
@@ -272,7 +270,7 @@ export function EntryList({
     }
   }
 
-  if (entries.length === 0) {
+  if (active.length === 0) {
     return (
       <div className="empty-state">
         <span className="empty-icon" aria-hidden="true">＋</span>
@@ -314,30 +312,62 @@ export function EntryList({
         </div>
       )}
 
-      {consumed.length > 0 && (
-        <div className="entry-section used-section">
-          <button
-            className="list-section-title used-toggle"
-            type="button"
-            aria-expanded={usedExpanded}
-            onClick={() => setUsedExpanded((value) => !value)}
-          >
-            <span>Использованные записи</span>
-            <span className="used-toggle-meta">
-              {consumed.length}
-              <span className={`chevron${usedExpanded ? ' open' : ''}`} aria-hidden="true">⌄</span>
-            </span>
-          </button>
-          {usedExpanded && consumed.map((entry, index) => (
-            <ConsumedRow
-              key={entry.id}
-              entry={entry}
-              settings={settings}
-              position={index + 1}
-            />
-          ))}
-        </div>
-      )}
+    </div>
+  )
+}
+
+export function UsedEntries({ entries, settings }: UsedEntriesProps) {
+  const [expanded, setExpanded] = useState(false)
+  const consumed = entries.filter((entry) => entry.status === 'consumed')
+  const groupedByRound = consumed.reduce<
+    Array<{
+      roundNumber: number
+      items: Array<{ entry: ContributionEntry; position: number }>
+    }>
+  >((groups, entry, index) => {
+    const roundNumber = entry.roundNumber ?? 0
+    const currentGroup = groups.at(-1)
+    const item = { entry, position: index + 1 }
+    if (currentGroup?.roundNumber === roundNumber) {
+      currentGroup.items.push(item)
+    } else {
+      groups.push({ roundNumber, items: [item] })
+    }
+    return groups
+  }, [])
+
+  if (consumed.length === 0) return null
+
+  return (
+    <div className="entry-section used-section">
+      <button
+        className="list-section-title used-toggle"
+        type="button"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((value) => !value)}
+      >
+        <span>ИСТОРИЯ</span>
+        <span className="used-toggle-meta">
+          {consumed.length}
+          <span className={`chevron${expanded ? ' open' : ''}`} aria-hidden="true">⌄</span>
+        </span>
+      </button>
+      {expanded &&
+        groupedByRound.map((group) => (
+          <div className="used-round-group" key={group.roundNumber}>
+            <div className="used-round-heading">
+              Гамбашар {group.roundNumber}
+            </div>
+            {group.items.map(({ entry, position }) => (
+              <ConsumedRow
+                key={entry.id}
+                entry={entry}
+                settings={settings}
+                position={position}
+              />
+            ))}
+          </div>
+        ))}
     </div>
   )
 }

@@ -29,7 +29,10 @@ export function RoundHistory({ history, onClear }: RoundHistoryProps) {
       ) : (
         <ol className="history-list">
           {history.map((result, index) => (
-            <li key={result.id}>
+            <li
+              key={result.id}
+              className={result.isLatest === false ? 'previous-winner' : 'latest-winner'}
+            >
               <span className="history-index">{index + 1}</span>
               <span className="round-number">Гамбашар {result.roundNumber}</span>
               <strong className={result.winner === 'Chat' ? 'chat-winner' : ''}>
