@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useReducer, useState } from 'react'
+import logoUrl from '../newbnny.png'
 import { EntryForm } from './components/EntryForm'
 import { EntryList, UsedEntries } from './components/EntryList'
 import { ConfirmDialog } from './components/ConfirmDialog'
@@ -109,7 +110,9 @@ export default function App() {
   return (
     <div className="app-shell">
       <header className="site-header">
-        <div className="brand-mark" aria-hidden="true">G</div>
+        <div className="brand-mark" aria-hidden="true">
+          <img src={logoUrl} alt="" />
+        </div>
         <div className="brand-copy">
           <h1>Gambalator</h1>
           <p>Считаем вклад. Находим лидера.</p>

@@ -91,7 +91,7 @@ input[aria-invalid='true'] {
 }
 
 .site-header {
-  height: 104px;
+  height: 140px;
   display: flex;
   align-items: center;
   border-bottom: 1px solid rgba(255, 255, 255, 0.07);
@@ -99,17 +99,27 @@ input[aria-invalid='true'] {
 
 .brand-mark {
   display: grid;
+  overflow: hidden;
   place-items: center;
-  width: 46px;
-  height: 46px;
-  margin-right: 14px;
-  border-radius: 13px;
+  width: 104px;
+  height: 104px;
+  margin-right: 28px;
+  padding: 2px;
+  border-radius: 29px;
   color: var(--accent-ink);
   background: var(--accent);
   font-weight: 900;
   font-size: 25px;
   transform: rotate(-4deg);
-  box-shadow: 0 9px 26px rgba(250, 117, 219, 0.2);
+  box-shadow: 0 20px 52px rgba(250, 117, 219, 0.2);
+}
+
+.brand-mark img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 26px;
+  object-fit: cover;
 }
 
 .brand-copy h1,

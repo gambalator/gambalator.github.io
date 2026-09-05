@@ -39,6 +39,8 @@ The application has no backend. It runs entirely in the browser, persists data l
 
 The page contains two primary components.
 
+The header uses the project artwork as its logo inside a prominent pink frame, preserving the rounded corners, slight tilt, and shadow.
+
 ### 5.1. Settings (`Настройки`)
 
 - The settings component is collapsed by default into one summary line showing the large `Параметры расчёта` title, round target, and both exchange rates. Do not show a separate `Настройки` heading.
