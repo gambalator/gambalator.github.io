@@ -1,6 +1,14 @@
 node_modules/
+.cache/
 dist/
+dist-single/
 coverage/
 *.local
 .DS_Store
-
+backend/.env
+backend/.venv/
+backend/.pytest_cache/
+backend/.ruff_cache/
+backend/.coverage
+backend/**/__pycache__/
+backend/*.sqlite3*

@@ -1,4 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
+import {
+  ADDITIONAL_CURRENCY_RATES,
+  CURRENCY_RATES,
+  PRIMARY_CURRENCY_RATES,
+  type CurrencyRateDefinition,
+  type RateSetting,
+} from '../domain/currencies'
 import { formatTenths, parseTenths } from '../domain/money'
 import type { Settings } from '../types'
 
@@ -8,31 +15,40 @@ interface SettingsPanelProps {
   onDirtyChange: (dirty: boolean) => void
 }
 
+type RateDrafts = Record<RateSetting, string>
+
+function rateDraftsFrom(settings: Settings): RateDrafts {
+  return Object.fromEntries(
+    CURRENCY_RATES.map((definition) => [
+      definition.setting,
+      formatTenths(settings[definition.setting]),
+    ]),
+  ) as RateDrafts
+}
+
 export function SettingsPanel({
   settings,
   onUpdate,
   onDirtyChange,
 }: SettingsPanelProps) {
   const [expanded, setExpanded] = useState(false)
+  const [allCurrenciesExpanded, setAllCurrenciesExpanded] = useState(false)
   const [roundDraft, setRoundDraft] = useState(
     formatTenths(settings.roundTargetTenths),
   )
-  const [eurDraft, setEurDraft] = useState(
-    formatTenths(settings.eurRateTenths),
-  )
-  const [usdDraft, setUsdDraft] = useState(
-    formatTenths(settings.usdRateTenths),
-  )
+  const [rateDrafts, setRateDrafts] = useState(() => rateDraftsFrom(settings))
   const [roundError, setRoundError] = useState('')
   const [ratesError, setRatesError] = useState('')
 
   const dirty = useMemo(() => {
     return (
       parseTenths(roundDraft) !== settings.roundTargetTenths ||
-      parseTenths(eurDraft) !== settings.eurRateTenths ||
-      parseTenths(usdDraft) !== settings.usdRateTenths
+      CURRENCY_RATES.some(
+        (definition) =>
+          parseTenths(rateDrafts[definition.setting]) !== settings[definition.setting],
+      )
     )
-  }, [eurDraft, roundDraft, settings, usdDraft])
+  }, [rateDrafts, roundDraft, settings])
 
   useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange])
 
@@ -48,24 +64,42 @@ export function SettingsPanel({
     onUpdate({ ...settings, roundTargetTenths: nextTarget })
   }
 
+  const updateRateDraft = (setting: RateSetting, value: string) => {
+    setRateDrafts((current) => ({ ...current, [setting]: value }))
+  }
+
   const saveRates = () => {
-    const eurRateTenths = parseTenths(eurDraft)
-    const usdRateTenths = parseTenths(usdDraft)
-    if (
-      eurRateTenths === null ||
-      eurRateTenths <= 0 ||
-      usdRateTenths === null ||
-      usdRateTenths <= 0
-    ) {
-      setRatesError('Оба курса должны быть больше 0 и иметь не более одного знака.')
-      return
+    const parsedRates = new Map<RateSetting, number>()
+    for (const definition of CURRENCY_RATES) {
+      const parsed = parseTenths(rateDrafts[definition.setting])
+      if (parsed === null || parsed <= 0) {
+        setRatesError('Все курсы должны быть больше 0 и иметь не более одного знака.')
+        return
+      }
+      parsedRates.set(definition.setting, parsed)
     }
 
+    const nextSettings = { ...settings }
+    for (const [setting, value] of parsedRates) nextSettings[setting] = value
     setRatesError('')
-    setEurDraft(formatTenths(eurRateTenths))
-    setUsdDraft(formatTenths(usdRateTenths))
-    onUpdate({ ...settings, eurRateTenths, usdRateTenths })
+    setRateDrafts(rateDraftsFrom(nextSettings))
+    onUpdate(nextSettings)
   }
+
+  const rateRow = (definition: CurrencyRateDefinition) => (
+    <div className="rate-row" key={definition.currency}>
+      <span>{definition.units} {definition.currency}</span>
+      <span className="equals">=</span>
+      <input
+        aria-label={`Курс ${definition.currency}`}
+        value={rateDrafts[definition.setting]}
+        onChange={(event) => updateRateDraft(definition.setting, event.target.value)}
+        inputMode="decimal"
+        aria-invalid={Boolean(ratesError)}
+      />
+      <span>RUB</span>
+    </div>
+  )
 
   return (
     <section
@@ -127,39 +161,41 @@ export function SettingsPanel({
         </div>
 
         <div className="setting-card rates-card">
-          <div>
+          <div className="rates-copy">
             <p className="setting-label">Курсы валют</p>
-            <p className="setting-hint">Стоимость одной единицы в рублях</p>
+            <p className="setting-hint">Стоимость указанного количества в рублях</p>
           </div>
 
-          <div className="rate-row">
-            <span>1 EUR</span>
-            <span className="equals">=</span>
-            <input
-              aria-label="Курс EUR"
-              value={eurDraft}
-              onChange={(event) => setEurDraft(event.target.value)}
-              inputMode="decimal"
-              aria-invalid={Boolean(ratesError)}
-            />
-            <span>RUB</span>
+          <div className="rates-editor">
+            <div className="rate-list">
+              {PRIMARY_CURRENCY_RATES.map(rateRow)}
+            </div>
+            <button
+              className="currency-rates-toggle"
+              type="button"
+              aria-expanded={allCurrenciesExpanded}
+              onClick={() => setAllCurrenciesExpanded((value) => !value)}
+            >
+              {allCurrenciesExpanded ? 'СКРЫТЬ ДОПОЛНИТЕЛЬНЫЕ ВАЛЮТЫ' : 'ОТКРЫТЬ ВСЕ ВАЛЮТЫ'}
+              <span
+                className={`chevron${allCurrenciesExpanded ? ' open' : ''}`}
+                aria-hidden="true"
+              >⌄</span>
+            </button>
+            {allCurrenciesExpanded && (
+              <div className="rate-list additional-rate-list">
+                {ADDITIONAL_CURRENCY_RATES.map(rateRow)}
+              </div>
+            )}
+            {ratesError && <p className="field-error">{ratesError}</p>}
+            <button
+              className="button secondary save-rates-button"
+              type="button"
+              onClick={saveRates}
+            >
+              Сохранить курсы
+            </button>
           </div>
-          <div className="rate-row">
-            <span>1 USD</span>
-            <span className="equals">=</span>
-            <input
-              aria-label="Курс USD"
-              value={usdDraft}
-              onChange={(event) => setUsdDraft(event.target.value)}
-              inputMode="decimal"
-              aria-invalid={Boolean(ratesError)}
-            />
-            <span>RUB</span>
-          </div>
-          {ratesError && <p className="field-error">{ratesError}</p>}
-          <button className="button secondary" type="button" onClick={saveRates}>
-            Сохранить курсы
-          </button>
         </div>
       </div>}
     </section>

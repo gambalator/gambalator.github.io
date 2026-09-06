@@ -21,6 +21,8 @@ import {
   normalizeNickname,
   parseTenths,
 } from '../domain/money'
+import { CURRENCIES } from '../domain/currencies'
+import { displayDonationMoscowTime } from '../domain/moscowTime'
 import type { ContributionEntry, Currency, Settings } from '../types'
 import { ChatToggle } from './ChatToggle'
 
@@ -40,10 +42,10 @@ interface UsedEntriesProps {
 function referenceText(entry: ContributionEntry): string | null {
   if (entry.sourceReference) {
     const source = entry.sourceReference
-    return `Исходная запись: ${formatTenths(source.amountTenths)} ${source.currency} по курсу ${formatTenths(source.rateTenths)}`
+    return `Исходная запись: ${formatTenths(source.amountTenths)} ${source.currency} по курсу ${source.rateUnits ?? 1} ${source.currency} = ${formatTenths(source.rateTenths)} RUB`
   }
   if (entry.currency !== 'RUB' && entry.appliedRateTenths) {
-    return `Курс расчёта: ${formatTenths(entry.appliedRateTenths)}`
+    return `Курс расчёта: ${entry.appliedRateUnits ?? 1} ${entry.currency} = ${formatTenths(entry.appliedRateTenths)} RUB`
   }
   return null
 }
@@ -177,6 +179,7 @@ function SortableRow({
       amountTenths,
       currency,
       status: 'active',
+      importReference: entry.importReference,
     })
     setError('')
     setEditing(false)
@@ -184,6 +187,9 @@ function SortableRow({
 
   const equivalent = rubEquivalent(entry, settings)
   const reference = referenceText(entry)
+  const donationTime = entry.importReference?.donatedAt
+    ? displayDonationMoscowTime(entry.importReference.donatedAt)
+    : null
 
   return (
     <div
@@ -223,9 +229,9 @@ function SortableRow({
               value={currency}
               onChange={(event) => setCurrency(event.target.value as Currency)}
             >
-              <option value="RUB">RUB</option>
-              <option value="USD">USD</option>
-              <option value="EUR">EUR</option>
+              {CURRENCIES.map((option) => (
+                <option value={option} key={option}>{option}</option>
+              ))}
             </select>
             {error && <small className="field-error">{error}</small>}
           </div>
@@ -263,7 +269,10 @@ function SortableRow({
               <span aria-hidden="true">⠿</span>
             </button>
           </div>
-          <div className="name-cell">{entry.nickname}</div>
+          <div className="name-cell">
+            <span className="entry-nickname">{entry.nickname}</span>
+            {donationTime && <small className="donation-time">{donationTime}</small>}
+          </div>
           <div className="money-cell">
             <strong>
               {formatTenths(entry.amountTenths)} {entry.currency}

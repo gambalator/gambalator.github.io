@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { calculateRounds } from '../src/domain/calculateRounds'
-import type { ContributionEntry, Currency, Settings } from '../src/types'
+import {
+  DEFAULT_SETTINGS,
+  type ContributionEntry,
+  type Currency,
+  type Settings,
+} from '../src/types'
 
 const settings: Settings = {
-  roundTargetTenths: 50_000,
-  eurRateTenths: 1_000,
-  usdRateTenths: 855,
+  ...DEFAULT_SETTINGS,
 }
 
 function active(
@@ -117,7 +120,15 @@ describe('calculateRounds', () => {
   })
 
   it('freezes a split foreign-currency entry into exact RUB portions', () => {
-    const entries = [active('usd', 'Dollar', 1_000, 'USD')]
+    const importedEntry: ContributionEntry = {
+      ...active('usd', 'Dollar', 1_000, 'USD'),
+      importReference: {
+        provider: 'donationalerts',
+        externalId: '42',
+        donatedAt: '2026-09-06 12:00:00',
+      },
+    }
+    const entries = [importedEntry]
 
     const outcome = calculateRounds(entries, settings, 1, idFactory())
 
@@ -134,7 +145,11 @@ describe('calculateRounds', () => {
       amountTenths: 1_000,
       currency: 'USD',
       rateTenths: 855,
+      rateUnits: 1,
     })
+    expect(outcome.entries.every((entry) => (
+      entry.importReference?.externalId === '42'
+    ))).toBe(true)
   })
 
   it('continues numbering from the requested round', () => {

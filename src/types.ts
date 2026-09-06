@@ -1,4 +1,4 @@
-export type Currency = 'RUB' | 'USD' | 'EUR'
+export type Currency = 'RUB' | 'USD' | 'EUR' | 'BYN' | 'KZT' | 'UAH' | 'BRL' | 'TRY'
 
 export type EntryStatus = 'active' | 'consumed'
 
@@ -6,12 +6,24 @@ export interface Settings {
   roundTargetTenths: number
   eurRateTenths: number
   usdRateTenths: number
+  bynRateTenths: number
+  kztRateTenths: number
+  uahRateTenths: number
+  brlRateTenths: number
+  tryRateTenths: number
 }
 
 export interface SourceReference {
   amountTenths: number
   currency: Currency
   rateTenths: number
+  rateUnits?: number
+}
+
+export interface ImportReference {
+  provider: 'donationalerts'
+  externalId: string
+  donatedAt: string | null
 }
 
 export interface ContributionEntry {
@@ -24,7 +36,9 @@ export interface ContributionEntry {
   roundNumber?: number
   frozenRubTenths?: number
   appliedRateTenths?: number
+  appliedRateUnits?: number
   sourceReference?: SourceReference
+  importReference?: ImportReference
 }
 
 export interface RoundResult {
@@ -46,6 +60,11 @@ export const DEFAULT_SETTINGS: Settings = {
   roundTargetTenths: 50_000,
   eurRateTenths: 1_000,
   usdRateTenths: 855,
+  bynRateTenths: 282,
+  kztRateTenths: 190,
+  uahRateTenths: 194,
+  brlRateTenths: 170,
+  tryRateTenths: 179,
 }
 
 export const DEFAULT_STATE: AppState = {

@@ -8,6 +8,7 @@ import {
   convertToRubTenths,
   normalizeNickname,
   rateFor,
+  rateUnitsFor,
 } from './money'
 
 interface RoundContribution {
@@ -38,6 +39,7 @@ function sourceFor(
     amountTenths: entry.amountTenths,
     currency: entry.currency,
     rateTenths: rateFor(entry.currency, settings),
+    rateUnits: rateUnitsFor(entry.currency),
   }
 }
 
@@ -165,6 +167,10 @@ export function calculateRounds(
           entry.currency === 'RUB'
             ? entry.appliedRateTenths
             : rateFor(entry.currency, settings),
+        appliedRateUnits:
+          entry.currency === 'RUB'
+            ? entry.appliedRateUnits
+            : rateUnitsFor(entry.currency),
       })
     } else {
       const sourceReference = sourceFor(entry, settings)
@@ -179,6 +185,7 @@ export function calculateRounds(
           roundNumber: segment.roundNumber,
           frozenRubTenths: segment.rubTenths,
           sourceReference,
+          importReference: entry.importReference,
         })
       }
 
@@ -192,6 +199,7 @@ export function calculateRounds(
           status: 'active',
           frozenRubTenths: entryRemaining,
           sourceReference,
+          importReference: entry.importReference,
         })
       }
     }

@@ -1,6 +1,11 @@
 [tools]
 node = "24"
 npm = "11"
+python = "3.13"
+uv = "latest"
+
+[env]
+UV_CACHE_DIR = "{{config_root}}/.cache/uv"
 
 [tasks.setup]
 description = "Install locked project dependencies"
@@ -26,8 +31,35 @@ run = "npm run test"
 description = "Create the production build"
 run = "npm run build"
 
+[tasks.build-single]
+description = "Create a self-contained HTML file for direct opening"
+run = "npm run build:single"
+
+[tasks.backend-setup]
+description = "Install the local Python backend and its development dependencies"
+run = "uv sync --project backend --all-groups"
+
+[tasks.backend-dev]
+description = "Run the local Gambalator backend"
+run = "uv run --project backend gambalator-backend"
+
+[tasks.backend-test]
+description = "Run the Python backend test suite"
+run = "uv run --project backend pytest"
+
+[tasks.backend-check]
+description = "Lint and test the Python backend"
+run = [
+  "uv run --project backend ruff check backend",
+  "uv run --project backend pytest",
+]
+
+[tasks.local]
+description = "Build Gambalator and run it with the local Python backend"
+depends = ["build"]
+run = "uv run --project backend gambalator-backend"
+
 [tasks.check]
 description = "Run every CI quality check"
-depends = ["typecheck", "lint", "test"]
+depends = ["typecheck", "lint", "test", "backend-check"]
 run = "npm run build"
-

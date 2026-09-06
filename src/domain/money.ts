@@ -1,4 +1,5 @@
 import type { Currency, Settings } from '../types'
+import { rateDefinition } from './currencies'
 
 const ONE_DECIMAL_NUMBER = /^\d+(?:[.,]\d)?$/
 
@@ -21,9 +22,12 @@ export function normalizeNickname(value: string): string {
 }
 
 export function rateFor(currency: Currency, settings: Settings): number {
-  if (currency === 'EUR') return settings.eurRateTenths
-  if (currency === 'USD') return settings.usdRateTenths
-  return 10
+  if (currency === 'RUB') return 10
+  return settings[rateDefinition(currency).setting]
+}
+
+export function rateUnitsFor(currency: Currency): number {
+  return currency === 'RUB' ? 1 : rateDefinition(currency).units
 }
 
 export function convertToRubTenths(
@@ -38,6 +42,5 @@ export function convertToRubTenths(
     throw new RangeError('Money value is too large to calculate safely')
   }
 
-  return Math.round(product / 10)
+  return Math.round(product / (rateUnitsFor(currency) * 10))
 }
-

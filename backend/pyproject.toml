@@ -1,0 +1,39 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "gambalator-backend"
+version = "0.1.0"
+description = "Local DonationAlerts synchronization service for Gambalator"
+requires-python = ">=3.11"
+dependencies = [
+  "flask>=3.1,<4",
+  "keyring>=25.6,<26",
+  "python-dotenv>=1.1,<2",
+  "requests>=2.32,<3",
+  "secretstorage>=3.3,<4; sys_platform == 'linux'",
+  "waitress>=3.0,<4",
+]
+
+[project.scripts]
+gambalator-backend = "gambalator_backend.__main__:main"
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3,<10",
+  "ruff>=0.9",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/gambalator_backend"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]

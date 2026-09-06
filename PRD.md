@@ -1,27 +1,28 @@
 # Gambalator — Product Requirements Document
 
-**Status:** Initial scope approved for implementation  
-**Version:** 1.0  
-**Date:** 2026-09-05
+**Status:** Static application implemented; local DonationAlerts integration in progress
+**Version:** 1.1
+**Date:** 2026-09-06
 
 ## 1. Product summary
 
 Gambalator is a Russian-language, desktop-only webpage for dividing an ordered stream of viewer contributions into fixed-value rounds and identifying the participant with the largest total contribution in each completed round.
 
-The application has no backend. It runs entirely in the browser, persists data locally, and is deployable as a static site on GitHub Pages.
+The core calculator can run entirely in the browser, persists data locally, and is deployable as a static site. An optional local Python companion service provides reliable DonationAlerts synchronization without requiring public hosting.
 
 ## 2. Goals
 
-- Let the user configure a round target and manually maintained EUR/RUB and USD/RUB exchange rates.
+- Let the user configure a round target and manually maintained RUB conversion rates for every currency documented as DonationAlerts API output.
 - Make adding contributions fast while allowing active entries to be edited, reordered, or removed.
 - Process contributions in their canonical queue order into as many complete rounds as possible.
 - Show the largest contributor for every completed round, or all tied nicknames when multiple contributors share the largest total.
 - Clearly distinguish consumed entries from entries still available for future rounds.
 - Preserve the working state after a page refresh without requiring an account or backend.
+- When the optional local service is running, recover DonationAlerts donations received while Gambalator was offline and import each donation at most once.
 
 ## 3. Out of scope for the initial version
 
-- A backend, accounts, authentication, or cross-device synchronization.
+- Publicly hosted backend services, Gambalator accounts, or cross-device synchronization.
 - Automatic/live exchange-rate retrieval.
 - Mobile-specific layouts.
 - Import, export, and collaborative editing.
@@ -31,9 +32,11 @@ The application has no backend. It runs entirely in the browser, persists data l
 ## 4. Target user and platform
 
 - A single operator using the tool on a desktop or laptop, including during a stream.
+- Development and local runtime must support Linux and Windows; client packaging is a later decision.
 - The entire product interface is in Russian.
 - The PRD and implementation documentation may be in English.
 - The supported deployment target is GitHub Pages.
+- A separate single-file build produces a self-contained HTML document that can be opened directly without a local server.
 
 ## 5. Page structure
 
@@ -44,6 +47,7 @@ The header uses the project artwork as its logo inside a prominent pink frame, p
 ### 5.1. Settings (`Настройки`)
 
 - The settings component is collapsed by default into one summary line showing the large `Параметры расчёта` title, round target, and both exchange rates. Do not show a separate `Настройки` heading.
+- Place the collapsed settings component last in the page's main content, after the donation workspace.
 - The summary line expands and collapses the settings controls.
 
 #### Round target
@@ -59,11 +63,12 @@ Use a compact, directly editable rate table rather than unlabeled standalone fie
 
 - `1 EUR = [100.0] RUB`
 - `1 USD = [85.5] RUB`
+- Additional collapsed rates: `1 BYN = [28.2] RUB`, `100 KZT = [19.0] RUB`, `10 UAH = [19.4] RUB`, `1 BRL = [17.0] RUB`, `10 TRY = [17.9] RUB`.
 - Provide a `Сохранить курсы` button so the operator explicitly commits both rates together.
 - Saved rates affect active foreign-currency entries the next time `РАССЧИТАТЬ` is pressed.
 - Existing consumed rows and result history never change when a rate changes.
-- Rate inputs are visually larger than ordinary compact fields. Do not show a redundant `1 RUB = 1 RUB` row.
-- `Текущая сумма раунда`, `Курсы валют`, and `Стоимость одной единицы в рублях` use prominent, readable text.
+- Rate inputs are visually larger than ordinary compact fields. Keep EUR and USD visible, and hide BYN, KZT, UAH, BRL, and TRY under `ОТКРЫТЬ ВСЕ ВАЛЮТЫ` by default. Do not show a redundant `1 RUB = 1 RUB` row.
+- `Текущая сумма раунда`, `Курсы валют`, and `Стоимость указанного количества в рублях` use prominent, readable text.
 
 ### 5.2. Contributions and calculation
 
@@ -71,17 +76,17 @@ This component contains the fast-entry form, contribution list, calculation cont
 
 Use centered, inset divider lines between the fast-entry form, active entries, calculation controls, and consumed-entry `ИСТОРИЯ`. Dividers must be visibly narrower than their containing content area.
 
-Its visible section title is `Очередь донатов`; do not show a separate `Взносы` heading.
-
-The section summary shows the number of active donation rows as `N активных` and the number of consumed donation rows as `N учтено`.
+Do not show a visible `Очередь донатов` or separate `Взносы` heading. Do not show active or consumed counter pills above the workspace.
 
 #### Fast-entry form
+
+The manual-entry section is collapsed by default into one line labelled `ДОБАВИТЬ ДОНАТ ВРУЧНУЮ`, without a field-name summary. Expanding it reveals the complete form; after a successful addition it stays open and focuses the nickname field for the next entry.
 
 Fields, in order:
 
 1. `Никнейм` — text input.
 2. `Сумма` — positive numeric input with one decimal place.
-3. `Валюта` — enum select with `RUB`, `USD`, and `EUR`; default `RUB`.
+3. `Валюта` — enum select with `RUB`, `USD`, `EUR`, `BYN`, `KZT`, `UAH`, `BRL`, and `TRY`; default `RUB`.
 4. `Chat` — a golden attribution toggle immediately before the add button; disabled by default.
 5. `ДОБАВИТЬ` — submit button with prominent text.
 
@@ -183,7 +188,7 @@ When only part of an entry is consumed, automatically split its list representat
 - Create one pale, locked row for each portion assigned to a completed round.
 - Keep the unconsumed remainder as a normal active row immediately after the consumed portion(s).
 - Processed split portions are denominated in RUB so round boundaries remain mathematically exact at one-decimal precision.
-- If the original entry used USD or EUR, keep reference text on each derived row, such as `Исходная запись: 100.0 USD по курсу 85.5`.
+- If the original entry used a foreign currency, keep the quoted unit and reference text on each derived row, such as `Исходная запись: 100.0 USD по курсу 1 USD = 85.5 RUB`.
 - The active RUB remainder is frozen at the saved rate used during splitting; subsequent exchange-rate changes do not revalue it.
 - If a foreign-currency entry is untouched because it belongs entirely to an incomplete round, it stays in its original currency and is converted again using the saved rate on the next calculation.
 
@@ -237,8 +242,11 @@ Expected results:
 - Restore the complete saved state after refresh or browser reopening.
 - Store a schema version so later releases can migrate persisted data safely.
 - Saving must be scoped to Gambalator and must not use cookies.
-- Data is local to the current browser and device; the interface should state this briefly near the bulk-clear controls.
+- Data is local to the current browser and device; do not add explanatory storage text near the bulk-clear controls.
 - If stored data is corrupt or incompatible, preserve it where feasible, show a Russian recovery message, and offer to start with an empty list while retaining recoverable valid settings.
+- The optional Python service stores DonationAlerts synchronization cursors, normalized donations, and import acknowledgements in a local SQLite database.
+- On its first connection, the service establishes the latest donation as its baseline by default and does not import the account's entire historical donation list.
+- On later starts, it paginates through DonationAlerts history until it reaches the saved ID, allowing donations received during downtime to be recovered.
 
 ## 9. UX and accessibility requirements
 
@@ -278,11 +286,44 @@ Expected results:
 
 ### Deployment and runtime
 
-- Static frontend only; no runtime server, database, secret keys, or external API dependency.
-- Build to Vite's `dist` directory with the GitHub Pages repository base path `/gambalator/`.
+- The manual calculator remains available as a static frontend with no runtime server, database, secret keys, or external API dependency.
+- Build to Vite's `dist` directory with the GitHub Pages organization-site base path `/`.
 - Deploy on pushes to `main` through GitHub Actions and the official GitHub Pages artifact workflow.
 - GitHub Actions installs the toolchain through `jdx/mise-action`, runs `mise run check`, and deploys `dist` only after the checks succeed.
 - Do not add client-side routing in the initial version; the application has one URL and one page.
+
+### Optional local DonationAlerts service
+
+- Use Python 3.13, Flask, Waitress, Requests, and SQLite in an independent `backend` project.
+- Poll the official `GET /api/v1/alerts/donations` endpoint with an OAuth token carrying the `oauth-donation-index` scope.
+- Provide a collapsed Russian-language DonationAlerts panel that shows connection state and the exact loopback Redirect URI.
+- Accept the application's App ID and API Key locally, open the DonationAlerts authorization page, validate the returned OAuth state, and exchange the temporary code through the Python service.
+- Prefer the operating system's credential store for API Key, access token, and refresh token; clearly report when an unencrypted local-file fallback is used.
+- Refresh expired access tokens without requiring the operator to repeat authorization.
+- When DonationAlerts rejects an expired or revoked refresh token, distinguish it from a temporary connection failure and show `Требуется повторная авторизация`.
+- Let the operator restart authorization with one button while reusing the locally saved App ID and API Key; do not redirect to DonationAlerts automatically at startup.
+- After manual disconnection, represent a saved API Key with a masked placeholder and explanatory text without returning the secret to the browser.
+- Provide an `Авто-Chat для новых донатов` toggle, disabled by default. Capture its state when the backend receives each new donation and import enabled donations with their row-level golden `Chat` toggle on.
+- Persist automatic Chat attribution in SQLite, retain the captured value through delayed import and reimport, and do not change donations already received when the global toggle changes.
+- Expose loopback REST endpoints to read, set explicitly, and invert automatic Chat attribution; synchronize external changes back to the visible toggle.
+- Bind the HTTP service to `127.0.0.1` by default and never return the DonationAlerts token through its local API.
+- Serve the built React application and local API from the same origin at `http://127.0.0.1:5741`, avoiding the legacy application's port `5000`.
+- Keep the legacy `pscript/Only_DA-Goal` project unchanged and independent.
+- Store runtime data in the operating system's application-data directory, with an environment override for development and testing.
+- Keep unsupported currencies pending and identify them explicitly instead of silently converting them with a hardcoded rate.
+- Use a persisted unique DonationAlerts ID for deduplication across polling, browser refreshes, and process restarts.
+- Import supported pending donations into the active queue in their original chronological order, while retaining the reversed visual presentation.
+- Persist an imported donation in browser storage before acknowledging it in the backend, and retry interrupted acknowledgements without creating duplicate rows.
+- Allow the operator to preview and confirm reimport of acknowledged backend records from a Moscow date and time, without changing the DonationAlerts synchronization cursor.
+- Use a project-styled dark calendar and explicit 24-hour `ЧЧ:ММ` Moscow-time field for reimport; never depend on the browser's native light calendar or AM/PM presentation.
+- Exclude DonationAlerts source IDs still present in browser state from both the reimport preview count and the actual requeue operation, so a positive preview always represents restorable rows.
+- Insert restored DonationAlerts rows into canonical calculation order using their original donation time and DonationAlerts ID tie-breaker, while preserving the relative order of existing and manual rows.
+- Acknowledge imported DonationAlerts rows sequentially to avoid saturating the local Waitress request queue during a multi-row import.
+- Offer quick reimport time selections for the last 10 minutes, last hour, the start of the current day, three days ago, and five days ago.
+- Keep a visible `Веб-страница → Локальный сервер → DonationAlerts` connection map with an independent status for each link, including synchronization errors.
+- Display healthy connection labels and their status dots in green.
+- Hide a successful reimport completion notice automatically after five seconds.
+- Allow the winner history to open from an icon-only expand button into a wide modal where long and tied winner names wrap without truncation.
 
 ### Implementation constraints
 
@@ -294,7 +335,7 @@ Expected results:
 
 The first version is acceptable when all of the following are true:
 
-1. On first visit, the round target is `5000.0 RUB`, EUR is `100.0`, USD is `85.5`, and new-entry currency is `RUB`.
+1. On first visit, the round target is `5000.0 RUB`; currency rates use the documented defaults; and new-entry currency is `RUB`.
 2. The user can quickly add a valid row with the button or Enter.
 3. The user can edit, remove, and drag active rows into a new order.
 4. Consumed rows are pale, explicitly marked, fixed, and locked.

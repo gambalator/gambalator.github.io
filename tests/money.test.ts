@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { convertToRubTenths, formatTenths, parseTenths } from '../src/domain/money'
+import { DEFAULT_SETTINGS } from '../src/types'
 
 describe('money helpers', () => {
   it('parses period and comma decimal separators', () => {
@@ -21,11 +22,14 @@ describe('money helpers', () => {
   it('rounds conversion to one tenth of a RUB', () => {
     expect(
       convertToRubTenths(101, 'USD', {
-        roundTargetTenths: 50_000,
-        eurRateTenths: 1_000,
-        usdRateTenths: 855,
+        ...DEFAULT_SETTINGS,
       }),
     ).toBe(8_636)
   })
-})
 
+  it('converts currencies quoted in lots without losing one-decimal precision', () => {
+    expect(convertToRubTenths(1_000, 'KZT', DEFAULT_SETTINGS)).toBe(190)
+    expect(convertToRubTenths(100, 'UAH', DEFAULT_SETTINGS)).toBe(194)
+    expect(convertToRubTenths(100, 'TRY', DEFAULT_SETTINGS)).toBe(179)
+  })
+})

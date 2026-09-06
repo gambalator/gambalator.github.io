@@ -16,6 +16,11 @@ describe('local storage adapter', () => {
           amountTenths: 10_000,
           currency: 'RUB',
           status: 'active',
+          importReference: {
+            provider: 'donationalerts',
+            externalId: '190373259',
+            donatedAt: '2026-09-06 10:20:23',
+          },
         },
       ],
     }
@@ -115,5 +120,46 @@ describe('local storage adapter', () => {
 
     expect(loadState().state).toEqual(versionThreeState)
     expect(loadState().state.entries[0]?.isChat).toBeUndefined()
+  })
+
+  it('loads existing version 4 data without losing it', () => {
+    const versionFourState: AppState = {
+      ...DEFAULT_STATE,
+      entries: [
+        {
+          id: 'existing',
+          nickname: 'Chel_4',
+          amountTenths: 500,
+          currency: 'RUB',
+          status: 'active',
+        },
+      ],
+    }
+    localStorage.setItem(
+      'gambalator:state',
+      JSON.stringify({ version: 4, state: versionFourState }),
+    )
+
+    expect(loadState().state).toEqual(versionFourState)
+  })
+
+  it('adds default DonationAlerts currency rates to version 5 data', () => {
+    localStorage.setItem(
+      'gambalator:state',
+      JSON.stringify({
+        version: 5,
+        state: {
+          settings: {
+            roundTargetTenths: 50_000,
+            eurRateTenths: 1_000,
+            usdRateTenths: 855,
+          },
+          entries: [],
+          history: [],
+        },
+      }),
+    )
+
+    expect(loadState().state.settings).toEqual(DEFAULT_STATE.settings)
   })
 })

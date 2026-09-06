@@ -1,4 +1,5 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { RoundHistory } from '../src/components/RoundHistory'
 
@@ -57,5 +58,36 @@ describe('RoundHistory', () => {
     )
 
     expect(screen.getByText('Alice, Bob')).toBeInTheDocument()
+  })
+
+  it('opens a wide dialog where long winner nicknames remain fully available', async () => {
+    const user = userEvent.setup()
+    const longNickname = 'Chel_ОченьДлинныйНикнеймБезСокращения_123456789'
+    render(
+      <RoundHistory
+        onClear={vi.fn()}
+        history={[
+          {
+            id: 'long-name',
+            roundNumber: 12,
+            winner: longNickname,
+            winningRubTenths: 42_000,
+            targetRubTenths: 50_000,
+          },
+        ]}
+      />,
+    )
+
+    await user.click(
+      screen.getByRole('button', { name: 'Открыть историю победителей полностью' }),
+    )
+
+    const dialog = screen.getByRole('dialog', { name: 'История победителей' })
+    expect(within(dialog).getByText(longNickname)).toBeInTheDocument()
+    expect(dialog.querySelector('.round-number')).toHaveTextContent('Гамбашар 12')
+    expect(within(dialog).getByText('4200.0 RUB')).toBeInTheDocument()
+
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 })

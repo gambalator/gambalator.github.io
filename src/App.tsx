@@ -1,18 +1,35 @@
-import { useCallback, useEffect, useReducer, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useReducer,
+  useRef,
+  useState,
+} from 'react'
 import logoUrl from '../newbnny.png'
 import { EntryForm } from './components/EntryForm'
 import { EntryList, UsedEntries } from './components/EntryList'
 import { ConfirmDialog } from './components/ConfirmDialog'
+import { DonationAlertsPanel } from './components/DonationAlertsPanel'
 import { RoundHistory } from './components/RoundHistory'
 import { SettingsPanel } from './components/SettingsPanel'
 import { calculateRounds } from './domain/calculateRounds'
 import { formatTenths } from './domain/money'
 import { nextRoundNumber } from './domain/nextRoundNumber'
+import {
+  acknowledgeDonation,
+  donationSourceId,
+  donationToEntry,
+  fetchPendingDonations,
+} from './integrations/donationAlerts'
 import { appReducer } from './state'
 import { loadState, saveState } from './storage/localStorage'
+import type { ContributionEntry } from './types'
 
 type Feedback = { tone: 'success' | 'neutral' | 'error'; text: string }
 type Confirmation = 'clear-used' | 'clear-entries' | 'clear-history'
+
+const DONATION_IMPORT_INTERVAL_MS = 5_000
 
 function createId(): string {
   return crypto.randomUUID()
@@ -26,10 +43,161 @@ export default function App() {
   const [feedback, setFeedback] = useState<Feedback | null>(
     loaded.warning ? { tone: 'error', text: loaded.warning } : null,
   )
+  const stateRef = useRef(state)
+  const acknowledgeAfterSaveRef = useRef(new Set<string>())
+  const acknowledgementInFlightRef = useRef(new Set<string>())
+  const acknowledgementQueueRef = useRef<string[]>([])
+  const acknowledgementQueuedRef = useRef(new Set<string>())
+  const acknowledgementWorkerRunningRef = useRef(false)
+  const lastUnsupportedNoticeRef = useRef('')
+
+  const processAcknowledgementQueue = useCallback(async () => {
+    if (acknowledgementWorkerRunningRef.current) return
+    acknowledgementWorkerRunningRef.current = true
+    try {
+      while (acknowledgementQueueRef.current.length > 0) {
+        const sourceId = acknowledgementQueueRef.current.shift()
+        if (sourceId === undefined) continue
+        acknowledgementQueuedRef.current.delete(sourceId)
+        acknowledgementInFlightRef.current.add(sourceId)
+        try {
+          await acknowledgeDonation(sourceId)
+        } catch {
+          // The backend keeps failed acknowledgements pending for a later poll retry.
+        } finally {
+          acknowledgementInFlightRef.current.delete(sourceId)
+        }
+      }
+    } finally {
+      acknowledgementWorkerRunningRef.current = false
+    }
+  }, [])
+
+  const acknowledgeSourceIds = useCallback((sourceIds: Iterable<string>) => {
+    for (const sourceId of sourceIds) {
+      if (
+        acknowledgementInFlightRef.current.has(sourceId) ||
+        acknowledgementQueuedRef.current.has(sourceId)
+      ) {
+        continue
+      }
+      acknowledgementQueuedRef.current.add(sourceId)
+      acknowledgementQueueRef.current.push(sourceId)
+    }
+    void processAcknowledgementQueue()
+  }, [processAcknowledgementQueue])
+
+  useLayoutEffect(() => {
+    stateRef.current = state
+    const saved = saveState(state)
+    if (!saved) {
+      if (acknowledgeAfterSaveRef.current.size > 0) {
+        setFeedback({
+          tone: 'error',
+          text: 'Не удалось сохранить импортированные донаты. Они не подтверждены и будут повторно обработаны.',
+        })
+      }
+      return
+    }
+
+    const persistedSourceIds = new Set(
+      state.entries
+        .map(donationSourceId)
+        .filter((sourceId): sourceId is string => sourceId !== null),
+    )
+    const readyToAcknowledge = [...acknowledgeAfterSaveRef.current].filter(
+      (sourceId) => persistedSourceIds.has(sourceId),
+    )
+    for (const sourceId of readyToAcknowledge) {
+      acknowledgeAfterSaveRef.current.delete(sourceId)
+    }
+    acknowledgeSourceIds(readyToAcknowledge)
+  }, [acknowledgeSourceIds, state])
 
   useEffect(() => {
-    saveState(state)
-  }, [state])
+    const controller = new AbortController()
+    let timeoutId: number | undefined
+
+    const pollPendingDonations = async () => {
+      try {
+        const donations = await fetchPendingDonations(controller.signal)
+        if (controller.signal.aborted) return
+
+        const currentState = stateRef.current
+        const existingSourceIds = new Set(
+          currentState.entries
+            .map(donationSourceId)
+            .filter((sourceId): sourceId is string => sourceId !== null),
+        )
+        const newEntries: ContributionEntry[] = []
+        const alreadyPersisted: string[] = []
+        const unsupportedCurrencies = new Set<string>()
+
+        for (const donation of donations) {
+          const entry = donationToEntry(donation)
+          if (entry === null) {
+            unsupportedCurrencies.add(donation.currency)
+            continue
+          }
+          if (existingSourceIds.has(donation.sourceId)) {
+            alreadyPersisted.push(donation.sourceId)
+            continue
+          }
+          existingSourceIds.add(donation.sourceId)
+          newEntries.push(entry)
+        }
+
+        if (alreadyPersisted.length > 0 && saveState(currentState)) {
+          acknowledgeSourceIds(alreadyPersisted)
+        }
+
+        if (newEntries.length > 0) {
+          for (const entry of newEntries) {
+            const sourceId = donationSourceId(entry)
+            if (sourceId !== null) acknowledgeAfterSaveRef.current.add(sourceId)
+          }
+          dispatch({ type: 'entries/import', entries: newEntries })
+        }
+
+        const unsupported = [...unsupportedCurrencies].sort()
+        const unsupportedSignature = unsupported.join(',')
+        const unsupportedText = unsupported.length > 0
+          ? ` Валюта ${unsupported.join(', ')} пока не поддерживается; такие донаты оставлены в ожидании.`
+          : ''
+
+        if (newEntries.length > 0) {
+          setFeedback({
+            tone: unsupported.length > 0 ? 'neutral' : 'success',
+            text: `DonationAlerts: импортировано донатов — ${newEntries.length}.${unsupportedText}`,
+          })
+        } else if (
+          unsupported.length > 0 &&
+          unsupportedSignature !== lastUnsupportedNoticeRef.current
+        ) {
+          setFeedback({
+            tone: 'neutral',
+            text: `DonationAlerts:${unsupportedText}`,
+          })
+        }
+        lastUnsupportedNoticeRef.current = unsupportedSignature
+      } catch {
+        if (controller.signal.aborted) return
+      } finally {
+        if (!controller.signal.aborted) {
+          timeoutId = window.setTimeout(
+            () => void pollPendingDonations(),
+            DONATION_IMPORT_INTERVAL_MS,
+          )
+        }
+      }
+    }
+
+    void pollPendingDonations()
+    return () => {
+      controller.abort()
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId)
+    }
+  }, [acknowledgeSourceIds])
 
   useEffect(() => {
     if (!feedback) return
@@ -107,6 +275,9 @@ export default function App() {
     (entry) => entry.status === 'active',
   ).length
   const consumedCount = state.entries.length - activeCount
+  const importedSourceIds = state.entries
+    .map(donationSourceId)
+    .filter((sourceId): sourceId is string => sourceId !== null)
 
   return (
     <div className="app-shell">
@@ -138,25 +309,9 @@ export default function App() {
           </div>
         )}
 
-        <SettingsPanel
-          settings={state.settings}
-          onUpdate={(settings) =>
-            dispatch({ type: 'settings/update', settings })
-          }
-          onDirtyChange={handleDirtyChange}
-        />
+        <DonationAlertsPanel existingDonationSourceIds={importedSourceIds} />
 
-        <section className="panel contributions-panel" aria-labelledby="entries-title">
-          <div className="section-heading entries-heading">
-            <div>
-              <p className="eyebrow" id="entries-title">Очередь донатов</p>
-            </div>
-            <div className="count-pills" aria-label="Состояние записей">
-              <span>{activeCount} активных</span>
-              <span>{consumedCount} учтено</span>
-            </div>
-          </div>
-
+        <section className="panel contributions-panel" aria-label="Рабочая область донатов">
           <EntryForm
             createId={createId}
             onAdd={(entry) => {
@@ -221,9 +376,6 @@ export default function App() {
                 </div>
               </div>
               <UsedEntries entries={state.entries} settings={state.settings} />
-              <p className="local-note">
-                Данные сохраняются только в этом браузере и на этом устройстве.
-              </p>
             </div>
 
             <RoundHistory
@@ -232,6 +384,14 @@ export default function App() {
             />
           </div>
         </section>
+
+        <SettingsPanel
+          settings={state.settings}
+          onUpdate={(settings) =>
+            dispatch({ type: 'settings/update', settings })
+          }
+          onDirtyChange={handleDirtyChange}
+        />
       </main>
 
       <footer>
