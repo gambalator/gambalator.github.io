@@ -26,6 +26,14 @@ if (!moduleTag?.[0] || !moduleTag[1]) {
 const resolveAsset = (assetPath) =>
   path.join(outputDirectory, assetPath.replace(/^\.\//, '').replace(/^\//, ''))
 
+const faviconTag = html.match(/<link\s+rel="icon"[^>]*href="([^"]+)"[^>]*>/)
+if (faviconTag?.[0] && faviconTag[1]) {
+  const favicon = await readFile(resolveAsset(faviconTag[1]))
+  html = html.replace(
+    faviconTag[0],
+    () => `<link rel="icon" type="image/png" href="data:image/png;base64,${favicon.toString('base64')}" />`,
+  )
+}
 const [css, javascript] = await Promise.all([
   readFile(resolveAsset(stylesheetTag[1]), 'utf8'),
   readFile(resolveAsset(moduleTag[1]), 'utf8'),

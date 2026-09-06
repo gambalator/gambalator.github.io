@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Protocol
 
 import keyring
-from keyring.errors import KeyringError, PasswordDeleteError
+from keyring.errors import PasswordDeleteError
 
 
 class CredentialStorageError(RuntimeError):
@@ -66,7 +66,8 @@ class SystemKeyringCredentialStore:
     def load(self) -> OAuthCredentials | None:
         try:
             raw = keyring.get_password(self.service_name, self.account_name)
-        except KeyringError as error:
+        except Exception as error:
+            # Platform keyring backends also raise native errors outside KeyringError.
             raise CredentialStorageError("The system credential store is unavailable") from error
         return None if raw is None else _deserialize(raw)
 
@@ -77,7 +78,7 @@ class SystemKeyringCredentialStore:
                 self.account_name,
                 json.dumps(asdict(credentials)),
             )
-        except KeyringError as error:
+        except Exception as error:
             raise CredentialStorageError("The system credential store is unavailable") from error
 
     def clear(self) -> None:
@@ -85,7 +86,7 @@ class SystemKeyringCredentialStore:
             keyring.delete_password(self.service_name, self.account_name)
         except PasswordDeleteError:
             return
-        except KeyringError as error:
+        except Exception as error:
             raise CredentialStorageError("The system credential store is unavailable") from error
 
 
@@ -142,6 +143,12 @@ class AutomaticCredentialStore:
         return self._active.secure
 
     def load(self) -> OAuthCredentials | None:
+        # A failed keyring update can leave an older record behind. A fallback
+        # file is authoritative until a successful keyring save removes it.
+        fallback_credentials = self.fallback.load()
+        if fallback_credentials is not None:
+            self._active = self.fallback
+            return fallback_credentials
         try:
             credentials = self.primary.load()
         except CredentialStorageError:
@@ -150,10 +157,7 @@ class AutomaticCredentialStore:
         if credentials is not None:
             self._active = self.primary
             return credentials
-        fallback_credentials = self.fallback.load()
-        if fallback_credentials is not None:
-            self._active = self.fallback
-        return fallback_credentials
+        return None
 
     def save(self, credentials: OAuthCredentials) -> None:
         try:
