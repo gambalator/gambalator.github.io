@@ -40,14 +40,24 @@ interface UsedEntriesProps {
 }
 
 function referenceText(entry: ContributionEntry): string | null {
-  if (entry.sourceReference) {
-    const source = entry.sourceReference
+  const source = entry.sourceReference
+  if (
+    source &&
+    source.currency !== 'RUB' &&
+    source.rateTenths !== undefined
+  ) {
     return `Исходная запись: ${formatTenths(source.amountTenths)} ${source.currency} по курсу ${source.rateUnits ?? 1} ${source.currency} = ${formatTenths(source.rateTenths)} RUB`
   }
   if (entry.currency !== 'RUB' && entry.appliedRateTenths) {
     return `Курс расчёта: ${entry.appliedRateUnits ?? 1} ${entry.currency} = ${formatTenths(entry.appliedRateTenths)} RUB`
   }
   return null
+}
+
+function originalDonationText(entry: ContributionEntry): string | null {
+  const source = entry.sourceReference
+  if (!source) return null
+  return `Исходный донат: ${formatTenths(source.amountTenths)} ${source.currency}`
 }
 
 function rubEquivalent(entry: ContributionEntry, settings: Settings): number {
@@ -82,17 +92,15 @@ function winnerKeysFor(
 
 function ConsumedRow({
   entry,
-  settings,
   position,
   isWinner,
 }: {
   entry: ContributionEntry
-  settings: Settings
   position: number
   isWinner: boolean
 }) {
   const reference = referenceText(entry)
-  const equivalent = rubEquivalent(entry, settings)
+  const originalDonation = originalDonationText(entry)
 
   return (
     <div className={`entry-row consumed-row${entry.isChat ? ' chat-consumed' : ''}`}>
@@ -108,8 +116,8 @@ function ConsumedRow({
         <strong>
           {formatTenths(entry.amountTenths)} {entry.currency}
         </strong>
-        {(entry.currency !== 'RUB' || reference) && (
-          <small>≈ {formatTenths(equivalent)} RUB</small>
+        {originalDonation && (
+          <small className="original-donation">{originalDonation}</small>
         )}
         {reference && <small>{reference}</small>}
       </div>
@@ -186,7 +194,7 @@ function SortableRow({
   }
 
   const equivalent = rubEquivalent(entry, settings)
-  const reference = referenceText(entry)
+  const originalDonation = originalDonationText(entry)
   const donationTime = entry.importReference?.donatedAt
     ? displayDonationMoscowTime(entry.importReference.donatedAt)
     : null
@@ -277,10 +285,12 @@ function SortableRow({
             <strong>
               {formatTenths(entry.amountTenths)} {entry.currency}
             </strong>
+            {originalDonation && (
+              <small className="original-donation">{originalDonation}</small>
+            )}
             {entry.currency !== 'RUB' && (
               <small>≈ {formatTenths(equivalent)} RUB</small>
             )}
-            {reference && <small>{reference}</small>}
           </div>
           <ChatToggle
             checked={entry.isChat === true}
@@ -435,7 +445,6 @@ export function UsedEntries({ entries, settings }: UsedEntriesProps) {
               <ConsumedRow
                 key={entry.id}
                 entry={entry}
-                settings={settings}
                 position={position}
                 isWinner={group.winnerKeys.has(
                   normalizeNickname(attributedNickname(entry)),

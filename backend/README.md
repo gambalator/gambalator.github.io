@@ -11,7 +11,8 @@ The backend:
 - retrieves donations received since the previous successful run;
 - stores normalized donations and synchronization state in SQLite;
 - stamps newly received donations with the persisted automatic Chat-attribution state;
-- imports pending RUB, USD, EUR, BYN, KZT, UAH, BRL, and TRY donations into the active Gambalator queue;
+- imports pending RUB, BRL, BYN, EUR, KZT, PLN, TRY, UAH, USD, and UZS donations into the active Gambalator queue;
+- loads official daily RUB exchange rates from the Bank of Russia on request;
 - serves the frontend production build from `dist` when it exists.
 
 ## Setup
@@ -133,6 +134,7 @@ frontend refreshes the displayed switch from the backend within five seconds.
 ## API
 
 - `GET /api/health` — local server health.
+- `GET /api/exchange-rates` — latest Bank of Russia rates normalized to Gambalator units and tenths of a ruble.
 - `GET /api/integration/status` — connection and synchronization status.
 - `POST /api/integration/oauth/configure` — save the DonationAlerts App ID and API Key.
 - `POST /api/integration/oauth/start` — create the authorization URL.
@@ -149,6 +151,12 @@ frontend refreshes the displayed switch from the backend within five seconds.
 
 The API never returns the API Key, access token, or refresh token. OAuth status
 contains only the safe booleans `apiKeyStored` and `reauthorizationRequired`.
+
+When the frontend imports a supported non-RUB donation, it requests exchange rates
+without awaiting that request in the donation import or acknowledgement path. A
+successful request is limited to once per local calendar day by a separate browser
+`localStorage` marker. Provider failures leave the saved rates unchanged. A marker
+write failure can only cause a later retry and does not affect donation processing.
 
 ## Local data
 

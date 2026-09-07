@@ -18,6 +18,8 @@ export const CURRENCIES: readonly Currency[] = [
   'UAH',
   'BRL',
   'TRY',
+  'PLN',
+  'UZS',
 ]
 
 export const PRIMARY_CURRENCY_RATES: readonly CurrencyRateDefinition[] = [
@@ -31,6 +33,8 @@ export const ADDITIONAL_CURRENCY_RATES: readonly CurrencyRateDefinition[] = [
   { currency: 'UAH', units: 10, setting: 'uahRateTenths' },
   { currency: 'BRL', units: 1, setting: 'brlRateTenths' },
   { currency: 'TRY', units: 10, setting: 'tryRateTenths' },
+  { currency: 'PLN', units: 1, setting: 'plnRateTenths' },
+  { currency: 'UZS', units: 10_000, setting: 'uzsRateTenths' },
 ]
 
 export const CURRENCY_RATES: readonly CurrencyRateDefinition[] = [

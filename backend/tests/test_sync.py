@@ -148,8 +148,16 @@ def test_normalization_uses_decimal_half_up_and_supports_da_output_currencies():
     assert item.currency == "KZT"
     assert item.to_public_dict()["supportedCurrency"] is True
 
+    for source_id, currency in ((2, "pln"), (3, "uzs")):
+        supported = normalize_donation(
+            raw(source_id, currency=currency),
+            "2026-09-06T12:00:01+00:00",
+        )
+        assert supported.currency == currency.upper()
+        assert supported.to_public_dict()["supportedCurrency"] is True
+
     unsupported = normalize_donation(
-        raw(2, currency="gbp"),
+        raw(4, currency="gbp"),
         "2026-09-06T12:00:01+00:00",
     )
     assert unsupported.to_public_dict()["supportedCurrency"] is False

@@ -51,13 +51,16 @@ describe('DonationAlerts frontend integration', () => {
     })
   })
 
-  it('imports every documented DonationAlerts output currency', () => {
-    expect(
-      donationToEntry(
-        pending({ currency: 'KZT', supportedCurrency: true }),
-      ),
-    ).toMatchObject({ currency: 'KZT' })
-  })
+  it.each(['BRL', 'BYN', 'EUR', 'KZT', 'PLN', 'TRY', 'UAH', 'USD', 'UZS'])(
+    'imports supported %s donations',
+    (currency) => {
+      expect(
+        donationToEntry(
+          pending({ currency, supportedCurrency: true }),
+        ),
+      ).toMatchObject({ currency })
+    },
+  )
 
   it('leaves undocumented currencies pending', () => {
     expect(

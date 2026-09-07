@@ -62,6 +62,10 @@ describe('calculateRounds', () => {
       [10_000, 'consumed'],
       [10_000, 'active'],
     ])
+    expect(nickRows.every((entry) => (
+      entry.sourceReference?.amountTenths === 20_000 &&
+      entry.sourceReference.currency === 'RUB'
+    ))).toBe(true)
   })
 
   it('allows one large contribution to win more than one round', () => {
@@ -76,6 +80,12 @@ describe('calculateRounds', () => {
       'nickX',
       'nickX',
     ])
+    const splitRows = outcome.entries.filter((entry) => entry.nickname === 'nickX')
+    expect(splitRows).toHaveLength(2)
+    expect(splitRows.every((entry) => (
+      entry.sourceReference?.amountTenths === 95_000 &&
+      entry.sourceReference.currency === 'RUB'
+    ))).toBe(true)
   })
 
   it('combines normalized nicknames and lists every nickname in a largest tie', () => {

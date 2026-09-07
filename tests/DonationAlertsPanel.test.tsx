@@ -257,7 +257,12 @@ describe('DonationAlertsPanel', () => {
       name: 'Выбор даты повторного импорта',
     })
     expect(calendar).toHaveClass('dark-date-calendar')
-    await user.click(within(calendar).getByRole('button', { pressed: true }))
+    await user.click(within(calendar).getByRole('button', {
+      name: 'Предыдущий месяц',
+    }))
+    await user.click(within(calendar).getAllByRole('button', {
+      name: /^Выбрать /,
+    })[0]!)
     expect(screen.queryByRole('dialog', {
       name: 'Выбор даты повторного импорта',
     })).not.toBeInTheDocument()

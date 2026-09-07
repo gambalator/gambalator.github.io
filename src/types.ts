@@ -1,4 +1,14 @@
-export type Currency = 'RUB' | 'USD' | 'EUR' | 'BYN' | 'KZT' | 'UAH' | 'BRL' | 'TRY'
+export type Currency =
+  | 'RUB'
+  | 'USD'
+  | 'EUR'
+  | 'BYN'
+  | 'KZT'
+  | 'UAH'
+  | 'BRL'
+  | 'TRY'
+  | 'PLN'
+  | 'UZS'
 
 export type EntryStatus = 'active' | 'consumed'
 
@@ -11,12 +21,16 @@ export interface Settings {
   uahRateTenths: number
   brlRateTenths: number
   tryRateTenths: number
+  plnRateTenths: number
+  uzsRateTenths: number
 }
+
+export type CurrencyRateSettings = Omit<Settings, 'roundTargetTenths'>
 
 export interface SourceReference {
   amountTenths: number
   currency: Currency
-  rateTenths: number
+  rateTenths?: number
   rateUnits?: number
 }
 
@@ -65,6 +79,8 @@ export const DEFAULT_SETTINGS: Settings = {
   uahRateTenths: 194,
   brlRateTenths: 170,
   tryRateTenths: 179,
+  plnRateTenths: 232,
+  uzsRateTenths: 731,
 }
 
 export const DEFAULT_STATE: AppState = {

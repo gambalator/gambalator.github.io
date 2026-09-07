@@ -33,7 +33,12 @@ function sourceFor(
   settings: Settings,
 ): SourceReference | undefined {
   if (entry.sourceReference) return entry.sourceReference
-  if (entry.currency === 'RUB') return undefined
+  if (entry.currency === 'RUB') {
+    return {
+      amountTenths: entry.amountTenths,
+      currency: entry.currency,
+    }
+  }
 
   return {
     amountTenths: entry.amountTenths,

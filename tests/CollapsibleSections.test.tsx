@@ -54,6 +54,92 @@ describe('collapsible sections', () => {
     })
   })
 
+  it('loads Bank of Russia rates into drafts before saving them', async () => {
+    const user = userEvent.setup()
+    const onUpdate = vi.fn()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            source: 'Банк России',
+            sourceUrl: 'https://www.cbr.ru/scripts/XML_daily.asp',
+            effectiveDate: '2026-09-08',
+            rates: [
+              { currency: 'EUR', units: 1, rubTenths: 923 },
+              { currency: 'USD', units: 1, rubTenths: 785 },
+              { currency: 'BYN', units: 1, rubTenths: 271 },
+              { currency: 'KZT', units: 100, rubTenths: 157 },
+              { currency: 'UAH', units: 10, rubTenths: 175 },
+              { currency: 'BRL', units: 1, rubTenths: 155 },
+              { currency: 'TRY', units: 10, rubTenths: 180 },
+              { currency: 'PLN', units: 1, rubTenths: 232 },
+              { currency: 'UZS', units: 10_000, rubTenths: 731 },
+            ],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      ),
+    )
+
+    render(
+      <SettingsPanel
+        settings={DEFAULT_SETTINGS}
+        onUpdate={onUpdate}
+        onDirtyChange={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: /Параметры расчёта/ }))
+    await user.click(screen.getByRole('button', { name: 'Получить курсы ЦБ РФ' }))
+
+    expect(await screen.findByText(/за 08\.09\.2026 загружены/)).toBeInTheDocument()
+    expect(screen.getByLabelText('Курс EUR')).toHaveValue('92.3')
+    expect(screen.getByLabelText('Курс USD')).toHaveValue('78.5')
+    expect(onUpdate).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'Сохранить курсы' }))
+    expect(onUpdate).toHaveBeenCalledWith({
+      ...DEFAULT_SETTINGS,
+      eurRateTenths: 923,
+      usdRateTenths: 785,
+      bynRateTenths: 271,
+      kztRateTenths: 157,
+      uahRateTenths: 175,
+      brlRateTenths: 155,
+      tryRateTenths: 180,
+      plnRateTenths: 232,
+      uzsRateTenths: 731,
+    })
+    vi.unstubAllGlobals()
+  })
+
+  it('shows background rate updates while preserving an operator draft', async () => {
+    const user = userEvent.setup()
+    const props = {
+      onUpdate: vi.fn(),
+      onDirtyChange: vi.fn(),
+    }
+    const { rerender } = render(
+      <SettingsPanel settings={DEFAULT_SETTINGS} {...props} />,
+    )
+
+    await user.click(screen.getByRole('button', { name: /Параметры расчёта/ }))
+    const eurRate = screen.getByLabelText('Курс EUR')
+    await user.clear(eurRate)
+    await user.type(eurRate, '99.9')
+
+    rerender(
+      <SettingsPanel
+        settings={{ ...DEFAULT_SETTINGS, eurRateTenths: 923, usdRateTenths: 785 }}
+        {...props}
+      />,
+    )
+
+    expect(screen.getByLabelText('Курс EUR')).toHaveValue('99.9')
+    expect(screen.getByLabelText('Курс USD')).toHaveValue('78.5')
+  })
+
   it('shows active entries first and keeps consumed entries collapsed', async () => {
     const user = userEvent.setup()
     const entries: ContributionEntry[] = [
@@ -166,6 +252,63 @@ describe('collapsible sections', () => {
     )
 
     expect(screen.getByText(/13:20.*МСК/)).toBeInTheDocument()
+  })
+
+  it('shows the original donation amount on active and consumed split rows', async () => {
+    const user = userEvent.setup()
+    const sourceReference = {
+      amountTenths: 10_000,
+      currency: 'EUR' as const,
+      rateTenths: 1_002,
+      rateUnits: 1,
+    }
+    const entries: ContributionEntry[] = [
+      {
+        id: 'split-used',
+        nickname: 'EuroDonor',
+        amountTenths: 50_000,
+        currency: 'RUB',
+        status: 'consumed',
+        roundNumber: 1,
+        frozenRubTenths: 50_000,
+        sourceReference,
+      },
+      {
+        id: 'split-active',
+        nickname: 'EuroDonor',
+        amountTenths: 50_200,
+        currency: 'RUB',
+        status: 'active',
+        frozenRubTenths: 50_200,
+        sourceReference,
+      },
+    ]
+
+    render(
+      <>
+        <EntryList
+          entries={entries}
+          settings={DEFAULT_SETTINGS}
+          onUpdate={vi.fn()}
+          onRemove={vi.fn()}
+          onReorder={vi.fn()}
+        />
+        <UsedEntries entries={entries} settings={DEFAULT_SETTINGS} />
+      </>,
+    )
+
+    expect(screen.getAllByText('Исходный донат: 1000.0 EUR')).toHaveLength(1)
+    expect(screen.queryByText(
+      'Исходная запись: 1000.0 EUR по курсу 1 EUR = 100.2 RUB',
+    )).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /ИСТОРИЯ/ }))
+
+    expect(screen.getAllByText('Исходный донат: 1000.0 EUR')).toHaveLength(2)
+    expect(screen.getAllByText(
+      'Исходная запись: 1000.0 EUR по курсу 1 EUR = 100.2 RUB',
+    )).toHaveLength(1)
+    expect(screen.queryByText('≈ 5000.0 RUB')).not.toBeInTheDocument()
   })
 
   it('highlights and updates an active donation attributed to Chat', async () => {

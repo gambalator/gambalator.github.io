@@ -15,6 +15,7 @@ import { DonationAlertsPanel } from './components/DonationAlertsPanel'
 import { RoundHistory } from './components/RoundHistory'
 import { SettingsPanel } from './components/SettingsPanel'
 import { calculateRounds } from './domain/calculateRounds'
+import { CURRENCY_RATES } from './domain/currencies'
 import { formatTenths } from './domain/money'
 import { nextRoundNumber } from './domain/nextRoundNumber'
 import {
@@ -23,6 +24,10 @@ import {
   donationToEntry,
   fetchPendingDonations,
 } from './integrations/donationAlerts'
+import {
+  fetchExchangeRatesIfNeeded,
+  rateSettingsFrom,
+} from './integrations/exchangeRates'
 import { appReducer } from './state'
 import { loadState, saveState } from './storage/localStorage'
 import type { ContributionEntry } from './types'
@@ -51,6 +56,7 @@ export default function App() {
   const acknowledgementQueuedRef = useRef(new Set<string>())
   const acknowledgementWorkerRunningRef = useRef(false)
   const lastUnsupportedNoticeRef = useRef('')
+  const operatorSettingsRevisionRef = useRef(0)
 
   const processAcknowledgementQueue = useCallback(async () => {
     if (acknowledgementWorkerRunningRef.current) return
@@ -158,6 +164,34 @@ export default function App() {
             if (sourceId !== null) acknowledgeAfterSaveRef.current.add(sourceId)
           }
           dispatch({ type: 'entries/import', entries: newEntries })
+
+          if (newEntries.some((entry) => entry.currency !== 'RUB')) {
+            const settingsAtRequest = stateRef.current.settings
+            const settingsRevisionAtRequest = operatorSettingsRevisionRef.current
+            void fetchExchangeRatesIfNeeded(controller.signal)
+              .then((snapshot) => {
+                if (snapshot === null || controller.signal.aborted) return
+                if (
+                  operatorSettingsRevisionRef.current !== settingsRevisionAtRequest
+                ) {
+                  return
+                }
+                const currentSettings = stateRef.current.settings
+                const operatorChangedRates = CURRENCY_RATES.some(
+                  (definition) =>
+                    currentSettings[definition.setting] !==
+                    settingsAtRequest[definition.setting],
+                )
+                if (operatorChangedRates) return
+                dispatch({
+                  type: 'settings/rates-update',
+                  rates: rateSettingsFrom(snapshot),
+                })
+              })
+              .catch(() => {
+                // Currency refresh is optional; donation import uses saved rates.
+              })
+          }
         }
 
         const unsupported = [...unsupportedCurrencies].sort()
@@ -390,9 +424,10 @@ export default function App() {
 
         <SettingsPanel
           settings={state.settings}
-          onUpdate={(settings) =>
+          onUpdate={(settings) => {
+            operatorSettingsRevisionRef.current += 1
             dispatch({ type: 'settings/update', settings })
-          }
+          }}
           onDirtyChange={handleDirtyChange}
         />
       </main>

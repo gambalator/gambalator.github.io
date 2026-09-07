@@ -63,11 +63,11 @@ Use a compact, directly editable rate table rather than unlabeled standalone fie
 
 - `1 EUR = [100.0] RUB`
 - `1 USD = [85.5] RUB`
-- Additional collapsed rates: `1 BYN = [28.2] RUB`, `100 KZT = [19.0] RUB`, `10 UAH = [19.4] RUB`, `1 BRL = [17.0] RUB`, `10 TRY = [17.9] RUB`.
+- Additional collapsed rates: `1 BYN = [28.2] RUB`, `100 KZT = [19.0] RUB`, `10 UAH = [19.4] RUB`, `1 BRL = [17.0] RUB`, `10 TRY = [17.9] RUB`, `1 PLN = [23.2] RUB`, `10000 UZS = [73.1] RUB`.
 - Provide a `Сохранить курсы` button so the operator explicitly commits both rates together.
 - Saved rates affect active foreign-currency entries the next time `РАССЧИТАТЬ` is pressed.
 - Existing consumed rows and result history never change when a rate changes.
-- Rate inputs are visually larger than ordinary compact fields. Keep EUR and USD visible, and hide BYN, KZT, UAH, BRL, and TRY under `ОТКРЫТЬ ВСЕ ВАЛЮТЫ` by default. Do not show a redundant `1 RUB = 1 RUB` row.
+- Rate inputs are visually larger than ordinary compact fields. Keep EUR and USD visible, and hide BYN, KZT, UAH, BRL, TRY, PLN, and UZS under `ОТКРЫТЬ ВСЕ ВАЛЮТЫ` by default. Do not show a redundant `1 RUB = 1 RUB` row.
 - `Текущая сумма раунда`, `Курсы валют`, and `Стоимость указанного количества в рублях` use prominent, readable text.
 
 ### 5.2. Contributions and calculation
@@ -86,7 +86,7 @@ Fields, in order:
 
 1. `Никнейм` — text input.
 2. `Сумма` — positive numeric input with one decimal place.
-3. `Валюта` — enum select with `RUB`, `USD`, `EUR`, `BYN`, `KZT`, `UAH`, `BRL`, and `TRY`; default `RUB`.
+3. `Валюта` — enum select with `RUB`, `BRL`, `BYN`, `EUR`, `KZT`, `PLN`, `TRY`, `UAH`, `USD`, and `UZS`; default `RUB`.
 4. `Chat` — a golden attribution toggle immediately before the add button; disabled by default.
 5. `ДОБАВИТЬ` — submit button with prominent text.
 
@@ -188,7 +188,8 @@ When only part of an entry is consumed, automatically split its list representat
 - Create one pale, locked row for each portion assigned to a completed round.
 - Keep the unconsumed remainder as a normal active row immediately after the consumed portion(s).
 - Processed split portions are denominated in RUB so round boundaries remain mathematically exact at one-decimal precision.
-- If the original entry used a foreign currency, keep the quoted unit and reference text on each derived row, such as `Исходная запись: 100.0 USD по курсу 1 USD = 85.5 RUB`.
+- Show the full original donation amount and currency on every derived active and consumed row, including RUB donations.
+- If the original entry used a foreign currency, keep the quoted unit and reference text on each derived consumed-history row, such as `Исходная запись: 100.0 USD по курсу 1 USD = 85.5 RUB`.
 - The active RUB remainder is frozen at the saved rate used during splitting; subsequent exchange-rate changes do not revalue it.
 - If a foreign-currency entry is untouched because it belongs entirely to an incomplete round, it stays in its original currency and is converted again using the saved rate on the next calculation.
 

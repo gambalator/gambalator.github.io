@@ -162,4 +162,41 @@ describe('local storage adapter', () => {
 
     expect(loadState().state.settings).toEqual(DEFAULT_STATE.settings)
   })
+
+  it('adds PLN and UZS rates to version 6 data without losing saved data', () => {
+    const settings = {
+      roundTargetTenths: 75_000,
+      eurRateTenths: 923,
+      usdRateTenths: 785,
+      bynRateTenths: 271,
+      kztRateTenths: 157,
+      uahRateTenths: 175,
+      brlRateTenths: 155,
+      tryRateTenths: 180,
+    }
+    const entry = {
+      id: 'existing',
+      nickname: 'SavedDonor',
+      amountTenths: 1_000,
+      currency: 'RUB',
+      status: 'active',
+    }
+    localStorage.setItem(
+      'gambalator:state',
+      JSON.stringify({
+        version: 6,
+        state: { settings, entries: [entry], history: [] },
+      }),
+    )
+
+    const loaded = loadState()
+
+    expect(loaded.warning).toBeUndefined()
+    expect(loaded.state.entries).toEqual([entry])
+    expect(loaded.state.settings).toEqual({
+      ...settings,
+      plnRateTenths: DEFAULT_STATE.settings.plnRateTenths,
+      uzsRateTenths: DEFAULT_STATE.settings.uzsRateTenths,
+    })
+  })
 })

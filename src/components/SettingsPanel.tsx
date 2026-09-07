@@ -7,6 +7,7 @@ import {
   type RateSetting,
 } from '../domain/currencies'
 import { formatTenths, parseTenths } from '../domain/money'
+import { fetchLatestExchangeRates } from '../integrations/exchangeRates'
 import type { Settings } from '../types'
 
 interface SettingsPanelProps {
@@ -26,6 +27,11 @@ function rateDraftsFrom(settings: Settings): RateDrafts {
   ) as RateDrafts
 }
 
+function formatRateDate(value: string): string {
+  const [year, month, day] = value.split('-')
+  return `${day}.${month}.${year}`
+}
+
 export function SettingsPanel({
   settings,
   onUpdate,
@@ -36,9 +42,16 @@ export function SettingsPanel({
   const [roundDraft, setRoundDraft] = useState(
     formatTenths(settings.roundTargetTenths),
   )
-  const [rateDrafts, setRateDrafts] = useState(() => rateDraftsFrom(settings))
+  const [rateDraftOverrides, setRateDraftOverrides] = useState<Partial<RateDrafts>>({})
   const [roundError, setRoundError] = useState('')
   const [ratesError, setRatesError] = useState('')
+  const [ratesStatus, setRatesStatus] = useState('')
+  const [ratesLoading, setRatesLoading] = useState(false)
+
+  const rateDrafts = useMemo(
+    () => ({ ...rateDraftsFrom(settings), ...rateDraftOverrides }),
+    [rateDraftOverrides, settings],
+  )
 
   const dirty = useMemo(() => {
     return (
@@ -65,7 +78,37 @@ export function SettingsPanel({
   }
 
   const updateRateDraft = (setting: RateSetting, value: string) => {
-    setRateDrafts((current) => ({ ...current, [setting]: value }))
+    setRateDraftOverrides((current) => {
+      const next = { ...current, [setting]: value }
+      if (parseTenths(value) === settings[setting]) delete next[setting]
+      return next
+    })
+    setRatesStatus('')
+  }
+
+  const loadLatestRates = async () => {
+    setRatesLoading(true)
+    setRatesError('')
+    setRatesStatus('')
+    try {
+      const snapshot = await fetchLatestExchangeRates()
+      const nextDrafts = Object.fromEntries(
+        CURRENCY_RATES.map((definition) => [
+          definition.setting,
+          formatTenths(snapshot.ratesTenths[definition.currency]),
+        ]),
+      ) as RateDrafts
+      setRateDraftOverrides(nextDrafts)
+      setRatesStatus(
+        `Курсы Банка России за ${formatRateDate(snapshot.effectiveDate)} загружены. Нажмите «Сохранить курсы».`,
+      )
+    } catch {
+      setRatesError(
+        'Не удалось получить курсы Банка России. Проверьте подключение к интернету и попробуйте ещё раз.',
+      )
+    } finally {
+      setRatesLoading(false)
+    }
   }
 
   const saveRates = () => {
@@ -82,7 +125,8 @@ export function SettingsPanel({
     const nextSettings = { ...settings }
     for (const [setting, value] of parsedRates) nextSettings[setting] = value
     setRatesError('')
-    setRateDrafts(rateDraftsFrom(nextSettings))
+    setRatesStatus('')
+    setRateDraftOverrides({})
     onUpdate(nextSettings)
   }
 
@@ -188,13 +232,26 @@ export function SettingsPanel({
               </div>
             )}
             {ratesError && <p className="field-error">{ratesError}</p>}
-            <button
-              className="button secondary save-rates-button"
-              type="button"
-              onClick={saveRates}
-            >
-              Сохранить курсы
-            </button>
+            {ratesStatus && (
+              <p className="exchange-rate-status" role="status">{ratesStatus}</p>
+            )}
+            <div className="rate-actions">
+              <button
+                className="button exchange-rate-button"
+                type="button"
+                onClick={() => void loadLatestRates()}
+                disabled={ratesLoading}
+              >
+                {ratesLoading ? 'Загрузка…' : 'Получить курсы ЦБ РФ'}
+              </button>
+              <button
+                className="button secondary save-rates-button"
+                type="button"
+                onClick={saveRates}
+              >
+                Сохранить курсы
+              </button>
+            </div>
           </div>
         </div>
       </div>}

@@ -16,7 +16,7 @@ SQLite. No separately running frontend development server is needed for normal u
 - Ordered active queue with newest-first visual presentation and oldest-first default
   calculation order.
 - Drag-and-drop ordering, inline editing, row deletion, and one-decimal amounts.
-- `RUB`, `USD`, `EUR`, `BYN`, `KZT`, `UAH`, `BRL`, and `TRY` conversion using editable
+- `RUB`, `BRL`, `BYN`, `EUR`, `KZT`, `PLN`, `TRY`, `UAH`, `USD`, and `UZS` conversion using editable
   rates.
 - Automatic calculation of every complete round and automatic splitting of donations
   that cross a round boundary.

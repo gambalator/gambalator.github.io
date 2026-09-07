@@ -28,6 +28,55 @@ function importedEntry(id: string, donatedAt: string): ContributionEntry {
 }
 
 describe('appReducer entry order', () => {
+  it('updates only exchange rates and preserves primary calculation data', () => {
+    const entries = [entry('active')]
+    const history: RoundResult[] = [
+      {
+        id: 'round-1',
+        roundNumber: 1,
+        winner: 'Winner',
+        winningRubTenths: 30_000,
+        targetRubTenths: 50_000,
+      },
+    ]
+    const state = {
+      ...DEFAULT_STATE,
+      entries,
+      history,
+      settings: { ...DEFAULT_STATE.settings, roundTargetTenths: 75_000 },
+    }
+
+    const updated = appReducer(state, {
+      type: 'settings/rates-update',
+      rates: {
+        eurRateTenths: 923,
+        usdRateTenths: 785,
+        bynRateTenths: 271,
+        kztRateTenths: 157,
+        uahRateTenths: 175,
+        brlRateTenths: 155,
+        tryRateTenths: 180,
+        plnRateTenths: 232,
+        uzsRateTenths: 731,
+      },
+    })
+
+    expect(updated.settings).toEqual({
+      roundTargetTenths: 75_000,
+      eurRateTenths: 923,
+      usdRateTenths: 785,
+      bynRateTenths: 271,
+      kztRateTenths: 157,
+      uahRateTenths: 175,
+      brlRateTenths: 155,
+      tryRateTenths: 180,
+      plnRateTenths: 232,
+      uzsRateTenths: 731,
+    })
+    expect(updated.entries).toBe(entries)
+    expect(updated.history).toBe(history)
+  })
+
   it('keeps the canonical calculation order chronological', () => {
     const state = {
       ...DEFAULT_STATE,

@@ -29,7 +29,18 @@ class Donation:
             "fetchedAt": self.fetched_at,
             "isChat": self.is_chat,
             "supportedCurrency": self.currency
-            in {"RUB", "USD", "EUR", "BYN", "KZT", "UAH", "BRL", "TRY"},
+            in {
+                "RUB",
+                "USD",
+                "EUR",
+                "BYN",
+                "KZT",
+                "UAH",
+                "BRL",
+                "TRY",
+                "PLN",
+                "UZS",
+            },
         }
 
 

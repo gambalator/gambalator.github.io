@@ -31,5 +31,7 @@ describe('money helpers', () => {
     expect(convertToRubTenths(1_000, 'KZT', DEFAULT_SETTINGS)).toBe(190)
     expect(convertToRubTenths(100, 'UAH', DEFAULT_SETTINGS)).toBe(194)
     expect(convertToRubTenths(100, 'TRY', DEFAULT_SETTINGS)).toBe(179)
+    expect(convertToRubTenths(10, 'PLN', DEFAULT_SETTINGS)).toBe(232)
+    expect(convertToRubTenths(100_000, 'UZS', DEFAULT_SETTINGS)).toBe(731)
   })
 })

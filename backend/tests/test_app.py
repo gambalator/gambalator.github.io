@@ -4,10 +4,11 @@ from urllib.parse import parse_qs, urlparse
 from gambalator_backend.app import create_app
 from gambalator_backend.config import Settings
 from gambalator_backend.database import Database, Donation
+from gambalator_backend.exchange_rates import ExchangeRateError, ExchangeRateSnapshot
 from gambalator_backend.sync import SyncService
 
 
-def build_app(tmp_path: Path):
+def build_app(tmp_path: Path, *, exchange_rate_source=None):
     settings = Settings(
         data_dir=tmp_path,
         frontend_dir=tmp_path / "missing-dist",
@@ -23,7 +24,38 @@ def build_app(tmp_path: Path):
         import_existing=False,
         max_pages_per_sync=10,
     )
-    return create_app(settings, database=database, sync_service=sync), database
+    return (
+        create_app(
+            settings,
+            database=database,
+            sync_service=sync,
+            exchange_rate_source=exchange_rate_source,
+        ),
+        database,
+    )
+
+
+class ExchangeRateSourceStub:
+    def __init__(self, *, error: ExchangeRateError | None = None):
+        self.error = error
+
+    def fetch_latest(self):
+        if self.error is not None:
+            raise self.error
+        return ExchangeRateSnapshot(
+            effective_date="2026-09-08",
+            rates_tenths={
+                "EUR": 923,
+                "USD": 785,
+                "BYN": 271,
+                "KZT": 157,
+                "UAH": 175,
+                "BRL": 155,
+                "TRY": 180,
+                "PLN": 232,
+                "UZS": 731,
+            },
+        )
 
 
 def test_health_and_disconnected_status(tmp_path):
@@ -40,6 +72,47 @@ def test_health_and_disconnected_status(tmp_path):
     assert status["autoChatEnabled"] is False
     assert status["oauth"]["apiKeyStored"] is False
     assert status["oauth"]["reauthorizationRequired"] is False
+
+
+def test_exchange_rates_are_returned_in_the_frontend_contract(tmp_path):
+    app, _database = build_app(
+        tmp_path,
+        exchange_rate_source=ExchangeRateSourceStub(),
+    )
+
+    response = app.test_client().get("/api/exchange-rates")
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "source": "Банк России",
+        "sourceUrl": "https://www.cbr.ru/scripts/XML_daily.asp",
+        "effectiveDate": "2026-09-08",
+        "rates": [
+            {"currency": "EUR", "units": 1, "rubTenths": 923},
+            {"currency": "USD", "units": 1, "rubTenths": 785},
+            {"currency": "BYN", "units": 1, "rubTenths": 271},
+            {"currency": "KZT", "units": 100, "rubTenths": 157},
+            {"currency": "UAH", "units": 10, "rubTenths": 175},
+            {"currency": "BRL", "units": 1, "rubTenths": 155},
+            {"currency": "TRY", "units": 10, "rubTenths": 180},
+            {"currency": "PLN", "units": 1, "rubTenths": 232},
+            {"currency": "UZS", "units": 10_000, "rubTenths": 731},
+        ],
+    }
+
+
+def test_exchange_rate_provider_failure_returns_bad_gateway(tmp_path):
+    app, _database = build_app(
+        tmp_path,
+        exchange_rate_source=ExchangeRateSourceStub(
+            error=ExchangeRateError("provider unavailable")
+        ),
+    )
+
+    response = app.test_client().get("/api/exchange-rates")
+
+    assert response.status_code == 502
+    assert response.get_json() == {"error": "provider unavailable"}
 
 
 def test_auto_chat_can_be_read_set_and_toggled(tmp_path):

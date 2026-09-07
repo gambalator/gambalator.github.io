@@ -9,6 +9,7 @@ from .config import Settings
 from .credentials import CredentialStorageError, CredentialStore, create_credential_store
 from .database import Database
 from .donationalerts import DonationAlertsClient, DonationAlertsError
+from .exchange_rates import CbrExchangeRateClient, ExchangeRateError, ExchangeRateSource
 from .oauth import OAuthManager, StaticAccessTokenProvider
 from .sync import (
     AUTO_CHAT_STATE_KEY,
@@ -94,6 +95,7 @@ def create_app(
     sync_service: SyncService | None = None,
     credential_store: CredentialStore | None = None,
     oauth_manager: OAuthManager | None = None,
+    exchange_rate_source: ExchangeRateSource | None = None,
 ) -> Flask:
     app = Flask(__name__, static_folder=None)
     app.json.sort_keys = False
@@ -105,9 +107,13 @@ def create_app(
     )
     oauth_manager = oauth_manager or _build_oauth_manager(settings, credential_store)
     sync_service = sync_service or _build_service(settings, database, oauth_manager)
+    exchange_rate_source = exchange_rate_source or CbrExchangeRateClient(
+        timeout_seconds=min(settings.request_timeout_seconds, 5.0)
+    )
     app.extensions["gambalator.database"] = database
     app.extensions["gambalator.sync_service"] = sync_service
     app.extensions["gambalator.oauth_manager"] = oauth_manager
+    app.extensions["gambalator.exchange_rate_source"] = exchange_rate_source
 
     @app.after_request
     def prevent_api_caching(response):
@@ -118,6 +124,14 @@ def create_app(
     @app.get("/api/health")
     def health():
         return jsonify({"status": "ok", "service": "gambalator-backend"})
+
+    @app.get("/api/exchange-rates")
+    def exchange_rates():
+        try:
+            snapshot = exchange_rate_source.fetch_latest()
+        except ExchangeRateError as error:
+            return jsonify({"error": str(error)}), 502
+        return jsonify(snapshot.to_public_dict())
 
     @app.get("/api/integration/status")
     def integration_status():

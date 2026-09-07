@@ -1,12 +1,14 @@
 import type {
   AppState,
   ContributionEntry,
+  CurrencyRateSettings,
   RoundResult,
   Settings,
 } from './types'
 
 export type AppAction =
   | { type: 'settings/update'; settings: Settings }
+  | { type: 'settings/rates-update'; rates: CurrencyRateSettings }
   | { type: 'entry/add'; entry: ContributionEntry }
   | { type: 'entries/import'; entries: ContributionEntry[] }
   | { type: 'entry/update'; entry: ContributionEntry }
@@ -112,6 +114,11 @@ export function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
     case 'settings/update':
       return { ...state, settings: action.settings }
+    case 'settings/rates-update':
+      return {
+        ...state,
+        settings: { ...state.settings, ...action.rates },
+      }
     case 'entry/add':
       return withActiveEntries(state, [...activeEntries(state), action.entry])
     case 'entries/import': {

@@ -11,7 +11,7 @@ import { isCurrency } from '../domain/currencies'
 
 const STORAGE_KEY = 'gambalator:state'
 const LEGACY_STORAGE_KEY = 'gambulator:state'
-const SCHEMA_VERSION = 6
+const SCHEMA_VERSION = 7
 
 interface StoredEnvelope {
   version: number
@@ -38,7 +38,9 @@ function isSettings(value: unknown): value is Settings {
     isPositiveSafeInteger(item.kztRateTenths) &&
     isPositiveSafeInteger(item.uahRateTenths) &&
     isPositiveSafeInteger(item.brlRateTenths) &&
-    isPositiveSafeInteger(item.tryRateTenths)
+    isPositiveSafeInteger(item.tryRateTenths) &&
+    isPositiveSafeInteger(item.plnRateTenths) &&
+    isPositiveSafeInteger(item.uzsRateTenths)
   )
 }
 
@@ -160,6 +162,10 @@ export function loadState(storage: Storage = window.localStorage): LoadResult {
     }
 
     if (envelope.version === 5 && migratedState) {
+      return { state: migratedState }
+    }
+
+    if (envelope.version === 6 && migratedState) {
       return { state: migratedState }
     }
 
