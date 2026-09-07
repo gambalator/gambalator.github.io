@@ -1906,6 +1906,35 @@ h3 {
   list-style: none;
 }
 
+/* Shared by the compact list and expanded winner-history dialog. */
+.history-list {
+  color-scheme: dark;
+  scrollbar-color: #55596b #12141e;
+  scrollbar-width: thin;
+}
+
+.history-list::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.history-list::-webkit-scrollbar-track {
+  background: #12141e;
+}
+
+.history-list::-webkit-scrollbar-thumb {
+  border: 2px solid #12141e;
+  border-radius: 10px;
+  background: #55596b;
+}
+
+.history-list::-webkit-scrollbar-thumb:hover {
+  background: #686c7d;
+}
+
+.history-list::-webkit-scrollbar-corner {
+  background: #12141e;
+}
 .history-list li {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
