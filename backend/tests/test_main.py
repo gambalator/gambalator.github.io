@@ -1,6 +1,11 @@
 from pathlib import Path
 
-from gambalator_backend.__main__ import donation_alerts_startup_message
+import pytest
+
+from gambalator_backend.__main__ import (
+    donation_alerts_startup_message,
+    reserve_listening_sockets,
+)
 from gambalator_backend.config import Settings
 
 
@@ -61,3 +66,15 @@ def test_startup_message_reports_required_reauthorization():
     )
 
     assert "requires authorization again" in message
+
+
+def test_reserved_port_rejects_a_second_listener():
+    listeners = reserve_listening_sockets("127.0.0.1", 0)
+    port = listeners[0].getsockname()[1]
+
+    try:
+        with pytest.raises(OSError):
+            reserve_listening_sockets("127.0.0.1", port)
+    finally:
+        for listener in listeners:
+            listener.close()

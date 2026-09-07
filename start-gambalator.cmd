@@ -1,5 +1,6 @@
 @echo off
 setlocal
+title Gambalator
 
 cd /d "%~dp0"
 
