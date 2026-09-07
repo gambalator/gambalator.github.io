@@ -41,8 +41,10 @@ export function ConfirmDialog({
         aria-labelledby="confirm-title"
         aria-describedby="confirm-message"
       >
-        <div className="dialog-accent" aria-hidden="true">!</div>
-        <h2 id="confirm-title">{title}</h2>
+        <div className="dialog-heading">
+          <div className="dialog-accent" aria-hidden="true">!</div>
+          <h2 id="confirm-title">{title}</h2>
+        </div>
         <p id="confirm-message">{message}</p>
         <div className="dialog-actions">
           <button className="button dialog-cancel" type="button" onClick={onCancel}>
