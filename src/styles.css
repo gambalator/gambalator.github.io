@@ -141,6 +141,14 @@ h3,
   letter-spacing: -0.02em;
 }
 
+.brand-version {
+  margin-left: 6px;
+  color: var(--orange);
+  font-size: 1.5em;
+  font-weight: 500;
+  letter-spacing: normal;
+  white-space: nowrap;
+}
 .brand-copy p {
   margin-top: 2px;
   color: var(--muted);
@@ -313,8 +321,9 @@ main {
 
 .connection-link strong {
   overflow: hidden;
-  font-size: 10px;
-  font-weight: 800;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1162,7 +1171,7 @@ h3 {
 .entry-form-title {
   color: var(--muted-strong);
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 500;
   letter-spacing: 0.035em;
   text-transform: uppercase;
 }
@@ -1635,7 +1644,8 @@ h3 {
 
 .active-row .money-cell strong {
   color: var(--text);
-  font-size: 17px;
+  font-size: 25.5px;
+  font-weight: 500;
 }
 
 .active-row .name-cell {
@@ -1644,8 +1654,8 @@ h3 {
   flex-direction: column;
   gap: 4px;
   color: #fff8fc;
-  font-size: 18px;
-  font-weight: 800;
+  font-size: 27px;
+  font-weight: 500;
 }
 
 .active-row .entry-nickname {
@@ -1668,7 +1678,8 @@ h3 {
 }
 
 .active-row .money-cell small {
-  font-size: 11px;
+  font-size: 16.5px;
+  font-weight: 400;
 }
 
 .money-cell small {
@@ -1685,6 +1696,10 @@ h3 {
   display: flex;
   align-items: center;
   gap: 5px;
+}
+
+.active-row > .row-actions {
+  padding-left: 8px;
 }
 
 .row-index {
@@ -1741,6 +1756,16 @@ h3 {
   border-radius: 8px;
   background: #292c3c;
   font-size: 17px;
+}
+
+.icon-button svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
 }
 
 .icon-button:hover {
@@ -1828,7 +1853,7 @@ h3 {
 
 .history-heading {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   padding: 19px;
   border-bottom: 1px solid var(--border-soft);
@@ -1937,6 +1962,7 @@ h3 {
 }
 .history-list li {
   display: grid;
+  flex: 0 0 auto;
   grid-template-columns: minmax(0, 1fr) auto;
   grid-template-areas:
     'round round'
@@ -2104,6 +2130,10 @@ h3 {
   text-underline-offset: 3px;
 }
 
+.secondary-actions .text-button {
+  font-size: 16px;
+}
+
 .text-button:hover {
   color: var(--text);
 }
@@ -2201,5 +2231,197 @@ footer span {
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+  }
+}
+
+.active-title > span:first-child {
+  font-weight: 500;
+}
+
+/* Larger typography inside the expanded DonationAlerts panel. */
+.integration-content { font-size: 24px; }
+.integration-content .integration-disconnect { font-size: 19.5px; }
+.integration-content .oauth-instructions p,
+.integration-content .integration-message { font-size: 21px; }
+.integration-content .oauth-instructions input { font-size: 18px; }
+.integration-content .oauth-instructions a { font-size: 19.5px; }
+.integration-content .oauth-fields label { font-size: 19.5px; }
+.integration-content .credential-saved-hint { font-size: 16.5px; }
+.integration-content .oauth-connect-button { font-size: 21px; }
+.integration-content .reauthorization-copy > strong { font-size: 25.5px; }
+.integration-content .reauthorization-copy > span { font-size: 19.5px; }
+.integration-content .saved-oauth-summary small { font-size: 15px; }
+.integration-content .saved-oauth-summary b { font-size: 18px; }
+.integration-content .reauthorize-button { font-size: 19.5px; }
+.integration-content .integration-connected-card span { font-size: 18px; }
+.integration-content .integration-connected-card strong { font-size: 21px; }
+.integration-content .integration-connected-card .auto-chat-copy > strong { font-size: 24px; }
+.integration-content .reimport-copy > strong { font-size: 24px; }
+.integration-content .reimport-shortcuts button { font-size: 15px; }
+.integration-content .reimport-date-label { font-size: 16.5px; }
+.integration-content .dark-date-trigger { font-size: 24px; }
+.integration-content .dark-date-calendar-heading strong { font-size: 19.5px; }
+.integration-content .dark-date-calendar-heading button { font-size: 33px; }
+.integration-content .dark-date-weekdays span { font-size: 15px; }
+.integration-content .dark-date-days button { font-size: 18px; }
+.integration-content .reimport-date-row input { font-size: 24px; }
+.integration-content .reimport-button { font-size: 16.5px; }
+.integration-content .credential-warning,
+.integration-content .integration-error,
+.integration-content .integration-notice { font-size: 19.5px; }
+
+.integration-content .oauth-fields input {
+  font-size: 24px;
+}
+
+.integration-content .integration-reimport-card {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.integration-content .reimport-copy > span {
+  max-width: none;
+}
+
+.integration-content .reimport-shortcuts {
+  flex-wrap: wrap;
+}
+
+.integration-content .reimport-date-row {
+  grid-template-columns: minmax(200px, 1fr) 110px auto;
+}
+
+.integration-content .reimport-date-label {
+  grid-column: 1 / -1;
+}
+
+.integration-content .reauthorization-card {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.integration-content .reauthorize-button {
+  justify-self: start;
+  white-space: normal;
+}
+
+.integration-content .dark-date-calendar {
+  width: 360px;
+}
+
+.integration-content .dark-date-days > span,
+.integration-content .dark-date-days button {
+  width: 100%;
+  height: 38px;
+}
+
+.integration-auto-chat-card .chat-toggle.compact {
+  width: auto;
+  flex: 0 0 auto;
+  padding-inline: 14px;
+}
+
+/* Calculation settings typography and alignment. */
+.settings-panel { font-size: 20.8px; }
+.settings-panel .settings-component-title { font-size: 18px; }
+.settings-panel .settings-summary { font-size: 14.3px; }
+.settings-panel .toggle-label { font-size: 13px; }
+.settings-panel .chevron { font-size: 23.4px; }
+.settings-panel .setting-label { font-size: 20.8px; }
+.settings-panel .setting-hint,
+.settings-panel .field-group label { font-size: 18.2px; }
+.settings-panel .target-value { font-size: 46.8px; }
+.settings-panel .target-value span,
+.settings-panel .rate-row { font-size: 16.9px; }
+.settings-panel .input-with-suffix input { font-size: 20.8px; }
+.settings-panel .input-with-suffix span,
+.settings-panel .field-error { font-size: 14.3px; }
+.settings-panel .rate-row input { font-size: 23.4px; }
+.settings-panel .currency-rates-toggle { font-size: 13px; }
+.settings-panel .currency-rates-toggle .chevron { font-size: 19.5px; }
+.settings-panel .button { font-size: 15.6px; }
+
+.settings-panel .target-current-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.settings-panel .target-value {
+  min-width: 0;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.settings-panel .rates-card {
+  grid-template-columns: minmax(0, 1fr);
+  row-gap: 16px;
+}
+
+.settings-panel .rate-row {
+  grid-template-columns: 82px 18px minmax(110px, 1fr) 44px;
+}
+
+.settings-panel .rates-card .button.secondary.save-rates-button {
+  color: #271d00;
+  background: var(--yellow);
+}
+
+.settings-panel .rates-card .button.secondary.save-rates-button:hover {
+  background: #ffe274;
+}
+
+/* Keep active-entry editing usable at the desktop minimum width. */
+.edit-row-form > div,
+.edit-row-form input,
+.edit-row-form select,
+.edit-money-fields {
+  min-width: 0;
+}
+
+.edit-row-form input,
+.edit-row-form select {
+  width: 100%;
+}
+
+@media (max-width: 1180px) {
+  .active-row {
+    grid-template-columns: 76px minmax(100px, 1fr) minmax(140px, 1fr) 96px 82px;
+  }
+
+  .active-row > .chat-toggle.compact,
+  .edit-row-form > .chat-toggle.compact {
+    width: 96px;
+    padding-inline: 10px;
+  }
+
+  .edit-row-form {
+    grid-template-columns: 48px minmax(0, 1fr) 96px 72px;
+    gap: 8px;
+  }
+
+  .edit-row-form .edit-index {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    align-self: center;
+    margin-left: 0;
+  }
+
+  .edit-row-form > div:first-of-type {
+    grid-column: 2 / -1;
+    grid-row: 1;
+  }
+
+  .edit-row-form .edit-money-fields {
+    grid-column: 2;
+    grid-row: 2;
+    padding-right: 0;
+  }
+
+  .edit-row-form > .chat-toggle {
+    grid-column: 3;
+    grid-row: 2;
+  }
+
+  .edit-row-form .edit-actions {
+    grid-column: 4;
+    grid-row: 2;
   }
 }

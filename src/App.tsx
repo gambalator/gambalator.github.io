@@ -7,6 +7,7 @@ import {
   useState,
 } from 'react'
 import logoUrl from '../newbnny.png'
+import { APP_VERSION } from './version'
 import { EntryForm } from './components/EntryForm'
 import { EntryList, UsedEntries } from './components/EntryList'
 import { ConfirmDialog } from './components/ConfirmDialog'
@@ -286,7 +287,9 @@ export default function App() {
           <img src={logoUrl} alt="" />
         </div>
         <div className="brand-copy">
-          <h1>Gambalator</h1>
+          <h1>
+            Gambalator <span className="brand-version" aria-label={`Версия ${APP_VERSION}`}>{APP_VERSION}</span>
+          </h1>
           <p>Считаем вклад. Находим лидера.</p>
         </div>
         <div className="header-stats" aria-label="Краткая сводка">

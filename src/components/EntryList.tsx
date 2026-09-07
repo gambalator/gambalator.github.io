@@ -295,7 +295,10 @@ function SortableRow({
               onClick={beginEdit}
               aria-label={`Изменить запись ${entry.nickname}`}
             >
-              ✎
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 20h4L18.5 9.5a2.8 2.8 0 0 0-4-4L4 16v4Z" />
+                <path d="m13.5 6.5 4 4" />
+              </svg>
             </button>
             <button
               className="icon-button danger-icon"
@@ -303,7 +306,12 @@ function SortableRow({
               onClick={() => onRemove(entry.id)}
               aria-label={`Удалить запись ${entry.nickname}`}
             >
-              ×
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 7h16" />
+                <path d="M9 7V4h6v3" />
+                <path d="m6 7 1 13h10l1-13" />
+                <path d="M10 11v5M14 11v5" />
+              </svg>
             </button>
           </div>
         </>

@@ -66,7 +66,6 @@ function WinnerHistoryDialog({ history, onClose }: WinnerHistoryDialogProps) {
       >
         <div className="winner-history-dialog-heading">
           <div>
-            <p className="eyebrow">Результаты</p>
             <h2 id="winner-history-dialog-title">История победителей</h2>
           </div>
           <button
@@ -93,7 +92,6 @@ export function RoundHistory({ history, onClear }: RoundHistoryProps) {
       <aside className="history-card" aria-labelledby="history-title">
         <div className="history-heading">
           <div>
-            <p className="eyebrow">Результаты</p>
             <h3 id="history-title">История победителей</h3>
           </div>
           {history.length > 0 && (

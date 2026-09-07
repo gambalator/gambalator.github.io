@@ -23,6 +23,16 @@ The project supports two modes:
 
 The project is named **Gambalator**. Do not reintroduce the old `Gambulator` spelling.
 
+## Site version
+
+- The operator-approved site version is defined in `src/version.ts` as `APP_VERSION`
+  and displayed beside the Gambalator title. Use the two-part `X.X` format (for
+  example, `1.0`). This is separate from package and persistence schema versions.
+- Consider whether a version update is appropriate when preparing a release or
+  handing off a substantial set of changes. Do not bump it for every change.
+- Before changing `APP_VERSION`, ask the operator to approve the proposed version.
+  An explicit version instruction in the current task already counts as approval;
+  do not ask again. Without approval, keep the current version and continue the work.
 ## Product conventions
 
 - All visible application copy must be Russian. Code and developer documentation may
