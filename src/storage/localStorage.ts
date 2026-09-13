@@ -93,6 +93,7 @@ function isResult(value: unknown): value is RoundResult {
     typeof item.winner === 'string' &&
     isPositiveSafeInteger(item.winningRubTenths) &&
     isPositiveSafeInteger(item.targetRubTenths) &&
+    (item.isChatWinner === undefined || typeof item.isChatWinner === 'boolean') &&
     (item.isLatest === undefined || typeof item.isLatest === 'boolean')
   )
 }

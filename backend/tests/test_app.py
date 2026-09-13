@@ -4,11 +4,12 @@ from urllib.parse import parse_qs, urlparse
 from gambalator_backend.app import create_app
 from gambalator_backend.config import Settings
 from gambalator_backend.database import Database, Donation
+from gambalator_backend.donationalerts import DonationPage
 from gambalator_backend.exchange_rates import ExchangeRateError, ExchangeRateSnapshot
-from gambalator_backend.sync import SyncService
+from gambalator_backend.sync import LAST_SEEN_ID_KEY, SyncService
 
 
-def build_app(tmp_path: Path, *, exchange_rate_source=None):
+def build_app(tmp_path: Path, *, exchange_rate_source=None, donation_source=None):
     settings = Settings(
         data_dir=tmp_path,
         frontend_dir=tmp_path / "missing-dist",
@@ -19,10 +20,11 @@ def build_app(tmp_path: Path, *, exchange_rate_source=None):
     database.initialize()
     sync = SyncService(
         database,
-        None,
+        donation_source,
         poll_interval_seconds=5,
         import_existing=False,
         max_pages_per_sync=10,
+        history_page_delay_seconds=0,
     )
     return (
         create_app(
@@ -58,6 +60,29 @@ class ExchangeRateSourceStub:
         )
 
 
+class HistorySourceStub:
+    def fetch_page(self, page: int) -> DonationPage:
+        pages = {
+            1: [
+                {
+                    "id": "201",
+                    "username": "Historical donor",
+                    "amount": "500.0",
+                    "currency": "RUB",
+                    "created_at": "2026-09-05 12:00:00",
+                },
+                {
+                    "id": "200",
+                    "username": "Too old",
+                    "amount": "100.0",
+                    "currency": "RUB",
+                    "created_at": "2026-09-03 12:00:00",
+                },
+            ]
+        }
+        return DonationPage(items=pages.get(page, []), current_page=page, last_page=1)
+
+
 def test_health_and_disconnected_status(tmp_path):
     app, _database = build_app(tmp_path)
     client = app.test_client()
@@ -72,6 +97,42 @@ def test_health_and_disconnected_status(tmp_path):
     assert status["autoChatEnabled"] is False
     assert status["oauth"]["apiKeyStored"] is False
     assert status["oauth"]["reauthorizationRequired"] is False
+
+
+def test_calculator_actions_and_overlay_share_backend_state(tmp_path):
+    app, _database = build_app(tmp_path)
+    client = app.test_client()
+
+    state = client.get("/api/calculator/state").get_json()
+    assert state["state"]["entries"] == []
+
+    for entry_id, nickname in (("1", "First"), ("2", "Second")):
+        response = client.post(
+            "/api/calculator/actions",
+            json={
+                "type": "entry/add",
+                "entry": {
+                    "id": entry_id,
+                    "nickname": nickname,
+                    "amountTenths": 50_000,
+                    "currency": "RUB",
+                    "status": "active",
+                },
+            },
+        )
+        assert response.status_code == 200
+
+    assert client.get("/api/overlay/state").get_json()["currentRubTenths"] == 100_000
+
+    calculated = client.post(
+        "/api/calculator/actions",
+        json={"type": "calculation/run", "maxRounds": 1},
+    ).get_json()
+    assert calculated["calculation"]["completedRounds"] == 1
+    assert [result["winner"] for result in calculated["state"]["history"]] == [
+        "First"
+    ]
+    assert client.get("/api/overlay/state").get_json()["currentRubTenths"] == 50_000
 
 
 def test_exchange_rates_are_returned_in_the_frontend_contract(tmp_path):
@@ -233,17 +294,14 @@ def test_acknowledged_donations_can_be_previewed_and_reimported(tmp_path):
     assert preview.get_json()["count"] == 1
     assert database.list_pending(10) == []
 
-    excluded = client.post(
-        "/api/donations/reimport/preview",
-        json={**body, "excludeSourceIds": ["101"]},
-    )
-    assert excluded.status_code == 200
-    assert excluded.get_json()["count"] == 0
-
     reimported = client.post("/api/donations/reimport", json=body)
     assert reimported.status_code == 200
-    assert reimported.get_json()["requeued"] == 1
-    assert [item.source_id for item in database.list_pending(10)] == ["101"]
+    assert reimported.get_json()["imported"] == 1
+    assert database.list_pending(10) == []
+    state = client.get("/api/calculator/state").get_json()["state"]
+    assert [item["importReference"]["externalId"] for item in state["entries"]] == [
+        "101"
+    ]
 
 
 def test_reimport_requires_a_timezone_aware_timestamp(tmp_path):
@@ -258,12 +316,30 @@ def test_reimport_requires_a_timezone_aware_timestamp(tmp_path):
     assert response.status_code == 400
     assert "timezone" in response.get_json()["error"]
 
-    invalid_exclusions = client.post(
-        "/api/donations/reimport/preview",
-        json={
-            "since": "2026-09-06T10:00:00+00:00",
-            "excludeSourceIds": "101",
-        },
-    )
-    assert invalid_exclusions.status_code == 400
-    assert "excludeSourceIds" in invalid_exclusions.get_json()["error"]
+def test_reimport_downloads_remote_history_as_regular_without_moving_cursor(tmp_path):
+    app, database = build_app(tmp_path, donation_source=HistorySourceStub())
+    database.set_state(LAST_SEEN_ID_KEY, "999")
+    client = app.test_client()
+    body = {"since": "2026-09-04T00:00:00+00:00"}
+
+    preview = client.post("/api/donations/reimport/preview", json=body)
+
+    assert preview.status_code == 200
+    assert preview.get_json() | {"since": "ignored"} == {
+        "since": "ignored",
+        "count": 1,
+        "historyScanned": True,
+        "fetched": 2,
+        "archived": 1,
+        "skippedUnsupported": 0,
+    }
+    assert database.get_state(LAST_SEEN_ID_KEY) == "999"
+    assert database.list_pending(10) == []
+
+    restored = client.post("/api/donations/reimport", json=body)
+
+    assert restored.status_code == 200
+    assert restored.get_json()["imported"] == 1
+    entry = client.get("/api/calculator/state").get_json()["state"]["entries"][0]
+    assert entry["importReference"]["externalId"] == "201"
+    assert entry["isChat"] is False

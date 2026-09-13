@@ -15,27 +15,20 @@ import { DonationAlertsPanel } from './components/DonationAlertsPanel'
 import { RoundHistory } from './components/RoundHistory'
 import { SettingsPanel } from './components/SettingsPanel'
 import { calculateRounds } from './domain/calculateRounds'
-import { CURRENCY_RATES } from './domain/currencies'
 import { formatTenths } from './domain/money'
 import { nextRoundNumber } from './domain/nextRoundNumber'
 import {
-  acknowledgeDonation,
-  donationSourceId,
-  donationToEntry,
-  fetchPendingDonations,
-} from './integrations/donationAlerts'
-import {
-  fetchExchangeRatesIfNeeded,
-  rateSettingsFrom,
-} from './integrations/exchangeRates'
-import { appReducer } from './state'
+  fetchCalculatorState,
+  sendCalculatorAction,
+} from './integrations/calculatorBackend'
+import { appReducer, type AppAction } from './state'
 import { loadState, saveState } from './storage/localStorage'
-import type { ContributionEntry } from './types'
+import { DEFAULT_STATE } from './types'
 
 type Feedback = { tone: 'success' | 'neutral' | 'error'; text: string }
 type Confirmation = 'clear-used' | 'clear-entries' | 'clear-history'
 
-const DONATION_IMPORT_INTERVAL_MS = 5_000
+const STATE_POLL_INTERVAL_MS = 1_000
 
 function createId(): string {
   return crypto.randomUUID()
@@ -43,196 +36,58 @@ function createId(): string {
 
 export default function App() {
   const [loaded] = useState(() => loadState())
-  const [state, dispatch] = useReducer(appReducer, loaded.state)
+  const [state, dispatch] = useReducer(appReducer, DEFAULT_STATE)
+  const [backendMode, setBackendMode] = useState<boolean | null>(null)
   const [settingsDirty, setSettingsDirty] = useState(false)
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null)
-  const [feedback, setFeedback] = useState<Feedback | null>(
-    loaded.warning ? { tone: 'error', text: loaded.warning } : null,
-  )
+  const [feedback, setFeedback] = useState<Feedback | null>(null)
   const stateRef = useRef(state)
-  const acknowledgeAfterSaveRef = useRef(new Set<string>())
-  const acknowledgementInFlightRef = useRef(new Set<string>())
-  const acknowledgementQueueRef = useRef<string[]>([])
-  const acknowledgementQueuedRef = useRef(new Set<string>())
-  const acknowledgementWorkerRunningRef = useRef(false)
-  const lastUnsupportedNoticeRef = useRef('')
-  const operatorSettingsRevisionRef = useRef(0)
-
-  const processAcknowledgementQueue = useCallback(async () => {
-    if (acknowledgementWorkerRunningRef.current) return
-    acknowledgementWorkerRunningRef.current = true
-    try {
-      while (acknowledgementQueueRef.current.length > 0) {
-        const sourceId = acknowledgementQueueRef.current.shift()
-        if (sourceId === undefined) continue
-        acknowledgementQueuedRef.current.delete(sourceId)
-        acknowledgementInFlightRef.current.add(sourceId)
-        try {
-          await acknowledgeDonation(sourceId)
-        } catch {
-          // The backend keeps failed acknowledgements pending for a later poll retry.
-        } finally {
-          acknowledgementInFlightRef.current.delete(sourceId)
-        }
-      }
-    } finally {
-      acknowledgementWorkerRunningRef.current = false
-    }
-  }, [])
-
-  const acknowledgeSourceIds = useCallback((sourceIds: Iterable<string>) => {
-    for (const sourceId of sourceIds) {
-      if (
-        acknowledgementInFlightRef.current.has(sourceId) ||
-        acknowledgementQueuedRef.current.has(sourceId)
-      ) {
-        continue
-      }
-      acknowledgementQueuedRef.current.add(sourceId)
-      acknowledgementQueueRef.current.push(sourceId)
-    }
-    void processAcknowledgementQueue()
-  }, [processAcknowledgementQueue])
+  const backendRevisionRef = useRef(0)
 
   useLayoutEffect(() => {
     stateRef.current = state
-    const saved = saveState(state)
-    if (!saved) {
-      if (acknowledgeAfterSaveRef.current.size > 0) {
-        setFeedback({
-          tone: 'error',
-          text: 'Не удалось сохранить импортированные донаты. Они не подтверждены и будут повторно обработаны.',
-        })
-      }
-      return
-    }
-
-    const persistedSourceIds = new Set(
-      state.entries
-        .map(donationSourceId)
-        .filter((sourceId): sourceId is string => sourceId !== null),
-    )
-    const readyToAcknowledge = [...acknowledgeAfterSaveRef.current].filter(
-      (sourceId) => persistedSourceIds.has(sourceId),
-    )
-    for (const sourceId of readyToAcknowledge) {
-      acknowledgeAfterSaveRef.current.delete(sourceId)
-    }
-    acknowledgeSourceIds(readyToAcknowledge)
-  }, [acknowledgeSourceIds, state])
+    if (backendMode === false) saveState(state)
+  }, [backendMode, state])
 
   useEffect(() => {
     const controller = new AbortController()
-    let timeoutId: number | undefined
-
-    const pollPendingDonations = async () => {
-      try {
-        const donations = await fetchPendingDonations(controller.signal)
+    void fetchCalculatorState(controller.signal)
+      .then((response) => {
         if (controller.signal.aborted) return
-
-        const currentState = stateRef.current
-        const existingSourceIds = new Set(
-          currentState.entries
-            .map(donationSourceId)
-            .filter((sourceId): sourceId is string => sourceId !== null),
-        )
-        const newEntries: ContributionEntry[] = []
-        const alreadyPersisted: string[] = []
-        const unsupportedCurrencies = new Set<string>()
-
-        for (const donation of donations) {
-          const entry = donationToEntry(donation)
-          if (entry === null) {
-            unsupportedCurrencies.add(donation.currency)
-            continue
-          }
-          if (existingSourceIds.has(donation.sourceId)) {
-            alreadyPersisted.push(donation.sourceId)
-            continue
-          }
-          existingSourceIds.add(donation.sourceId)
-          newEntries.push(entry)
-        }
-
-        if (alreadyPersisted.length > 0 && saveState(currentState)) {
-          acknowledgeSourceIds(alreadyPersisted)
-        }
-
-        if (newEntries.length > 0) {
-          for (const entry of newEntries) {
-            const sourceId = donationSourceId(entry)
-            if (sourceId !== null) acknowledgeAfterSaveRef.current.add(sourceId)
-          }
-          dispatch({ type: 'entries/import', entries: newEntries })
-
-          if (newEntries.some((entry) => entry.currency !== 'RUB')) {
-            const settingsAtRequest = stateRef.current.settings
-            const settingsRevisionAtRequest = operatorSettingsRevisionRef.current
-            void fetchExchangeRatesIfNeeded(controller.signal)
-              .then((snapshot) => {
-                if (snapshot === null || controller.signal.aborted) return
-                if (
-                  operatorSettingsRevisionRef.current !== settingsRevisionAtRequest
-                ) {
-                  return
-                }
-                const currentSettings = stateRef.current.settings
-                const operatorChangedRates = CURRENCY_RATES.some(
-                  (definition) =>
-                    currentSettings[definition.setting] !==
-                    settingsAtRequest[definition.setting],
-                )
-                if (operatorChangedRates) return
-                dispatch({
-                  type: 'settings/rates-update',
-                  rates: rateSettingsFrom(snapshot),
-                })
-              })
-              .catch(() => {
-                // Currency refresh is optional; donation import uses saved rates.
-              })
-          }
-        }
-
-        const unsupported = [...unsupportedCurrencies].sort()
-        const unsupportedSignature = unsupported.join(',')
-        const unsupportedText = unsupported.length > 0
-          ? ` Валюта ${unsupported.join(', ')} пока не поддерживается; такие донаты оставлены в ожидании.`
-          : ''
-
-        if (newEntries.length > 0) {
-          setFeedback({
-            tone: unsupported.length > 0 ? 'neutral' : 'success',
-            text: `DonationAlerts: импортировано донатов — ${newEntries.length}.${unsupportedText}`,
-          })
-        } else if (
-          unsupported.length > 0 &&
-          unsupportedSignature !== lastUnsupportedNoticeRef.current
-        ) {
-          setFeedback({
-            tone: 'neutral',
-            text: `DonationAlerts:${unsupportedText}`,
-          })
-        }
-        lastUnsupportedNoticeRef.current = unsupportedSignature
-      } catch {
+        backendRevisionRef.current = response.revision
+        dispatch({ type: 'state/replace', state: response.state })
+        setBackendMode(true)
+      })
+      .catch(() => {
         if (controller.signal.aborted) return
-      } finally {
-        if (!controller.signal.aborted) {
-          timeoutId = window.setTimeout(
-            () => void pollPendingDonations(),
-            DONATION_IMPORT_INTERVAL_MS,
-          )
+        dispatch({ type: 'state/replace', state: loaded.state })
+        setBackendMode(false)
+        if (loaded.warning) {
+          setFeedback({ tone: 'error', text: loaded.warning })
         }
-      }
-    }
-
-    void pollPendingDonations()
+      })
     return () => {
       controller.abort()
-      if (timeoutId !== undefined) window.clearTimeout(timeoutId)
     }
-  }, [acknowledgeSourceIds])
+  }, [loaded])
+
+  useEffect(() => {
+    if (backendMode !== true) return
+    const controller = new AbortController()
+    const poll = window.setInterval(() => {
+      void fetchCalculatorState(controller.signal)
+        .then((response) => {
+          if (response.revision <= backendRevisionRef.current) return
+          backendRevisionRef.current = response.revision
+          dispatch({ type: 'state/replace', state: response.state })
+        })
+        .catch(() => undefined)
+    }, STATE_POLL_INTERVAL_MS)
+    return () => {
+      controller.abort()
+      window.clearInterval(poll)
+    }
+  }, [backendMode])
 
   useEffect(() => {
     if (!feedback) return
@@ -244,13 +99,55 @@ export default function App() {
     setSettingsDirty(dirty)
   }, [])
 
-  const calculate = () => {
+  const applyAction = useCallback(async (action: AppAction) => {
+    if (backendMode === null || action.type === 'state/replace') return
+    if (backendMode === false) {
+      dispatch(action)
+      return
+    }
     try {
+      const response = await sendCalculatorAction(action)
+      if (response.revision >= backendRevisionRef.current) {
+        backendRevisionRef.current = response.revision
+        dispatch({ type: 'state/replace', state: response.state })
+      }
+      return response.calculation
+    } catch {
+      setFeedback({
+        tone: 'error',
+        text: 'Не удалось сохранить изменение на локальном сервере.',
+      })
+    }
+  }, [backendMode])
+
+  const calculate = async (maxRounds: 1 | null) => {
+    try {
+      if (backendMode === true) {
+        const calculation = await applyAction({
+          type: 'calculation/run',
+          maxRounds,
+        } as AppAction)
+        if (!calculation) return
+        if (calculation.completedRounds === 0) {
+          setFeedback({
+            tone: 'neutral',
+            text: `До завершения раунда не хватает ${formatTenths(calculation.remainingNeededTenths)} RUB. Записи не изменены.`,
+          })
+          return
+        }
+        setFeedback({
+          tone: 'success',
+          text: `Готово: завершено раундов — ${calculation.completedRounds}.`,
+        })
+        return
+      }
+
       const outcome = calculateRounds(
         state.entries,
         state.settings,
         nextRoundNumber(state.entries, state.history),
         createId,
+        maxRounds ?? undefined,
       )
 
       if (outcome.completedRounds === 0) {
@@ -261,7 +158,7 @@ export default function App() {
         return
       }
 
-      dispatch({
+      await applyAction({
         type: 'calculation/apply',
         entries: outcome.entries,
         results: outcome.newResults,
@@ -278,10 +175,10 @@ export default function App() {
     }
   }
 
-  const confirmPendingAction = () => {
-    if (confirmation === 'clear-used') dispatch({ type: 'used/clear' })
-    if (confirmation === 'clear-entries') dispatch({ type: 'entries/clear' })
-    if (confirmation === 'clear-history') dispatch({ type: 'history/clear' })
+  const confirmPendingAction = async () => {
+    if (confirmation === 'clear-used') await applyAction({ type: 'used/clear' })
+    if (confirmation === 'clear-entries') await applyAction({ type: 'entries/clear' })
+    if (confirmation === 'clear-history') await applyAction({ type: 'history/clear' })
     setConfirmation(null)
     setFeedback(null)
   }
@@ -310,10 +207,6 @@ export default function App() {
     (entry) => entry.status === 'active',
   ).length
   const consumedCount = state.entries.length - activeCount
-  const importedSourceIds = state.entries
-    .map(donationSourceId)
-    .filter((sourceId): sourceId is string => sourceId !== null)
-
   return (
     <div className="app-shell">
       <header className="site-header">
@@ -346,13 +239,13 @@ export default function App() {
           </div>
         )}
 
-        <DonationAlertsPanel existingDonationSourceIds={importedSourceIds} />
+        <DonationAlertsPanel />
 
         <section className="panel contributions-panel" aria-label="Рабочая область донатов">
           <EntryForm
             createId={createId}
             onAdd={(entry) => {
-              dispatch({ type: 'entry/add', entry })
+              void applyAction({ type: 'entry/add', entry })
               setFeedback(null)
             }}
           />
@@ -364,10 +257,10 @@ export default function App() {
               <EntryList
                 entries={state.entries}
                 settings={state.settings}
-                onUpdate={(entry) => dispatch({ type: 'entry/update', entry })}
-                onRemove={(id) => dispatch({ type: 'entry/remove', id })}
+                onUpdate={(entry) => void applyAction({ type: 'entry/update', entry })}
+                onRemove={(id) => void applyAction({ type: 'entry/remove', id })}
                 onReorder={(activeId, overId) =>
-                  dispatch({ type: 'entry/reorder', activeId, overId })
+                  void applyAction({ type: 'entry/reorder', activeId, overId })
                 }
               />
 
@@ -380,19 +273,29 @@ export default function App() {
               )}
 
               <div className="calculation-actions">
-                <button
-                  className="button calculate-button"
-                  type="button"
-                  onClick={calculate}
-                  disabled={activeCount === 0 || settingsDirty}
-                  title={
-                    settingsDirty
-                      ? 'Сначала сохраните изменения в настройках'
-                      : undefined
-                  }
-                >
-                  РАССЧИТАТЬ
-                </button>
+                <div className="calculate-buttons">
+                  <button
+                    className="button calculate-button"
+                    type="button"
+                    onClick={() => void calculate(null)}
+                    disabled={activeCount === 0 || settingsDirty || backendMode === null}
+                    title={
+                      settingsDirty
+                        ? 'Сначала сохраните изменения в настройках'
+                        : undefined
+                    }
+                  >
+                    РАССЧИТАТЬ ВСЕ
+                  </button>
+                  <button
+                    className="button secondary calculate-one-button"
+                    type="button"
+                    onClick={() => void calculate(1)}
+                    disabled={activeCount === 0 || settingsDirty || backendMode === null}
+                  >
+                    Рассчитать один
+                  </button>
+                </div>
                 <div className="secondary-actions">
                   <button
                     className="text-button"
@@ -425,8 +328,7 @@ export default function App() {
         <SettingsPanel
           settings={state.settings}
           onUpdate={(settings) => {
-            operatorSettingsRevisionRef.current += 1
-            dispatch({ type: 'settings/update', settings })
+            void applyAction({ type: 'settings/update', settings })
           }}
           onDirtyChange={handleDirtyChange}
         />

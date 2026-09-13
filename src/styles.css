@@ -2162,6 +2162,16 @@ h3 {
   letter-spacing: 0.04em;
 }
 
+.calculate-buttons {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.calculate-one-button {
+  min-height: 50px;
+}
+
 .secondary-actions {
   display: flex;
   gap: 13px;

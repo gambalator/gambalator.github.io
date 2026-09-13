@@ -15,6 +15,7 @@ const connectedStatus = {
   connected: true,
   running: true,
   lastPersistedSuccessAt: '2026-09-06T12:00:00+00:00',
+  historyOldestAt: null,
   lastError: null,
   pendingDonations: 2,
   credentialError: null,
@@ -224,7 +225,7 @@ describe('DonationAlertsPanel', () => {
     expect(screen.queryByLabelText('API Key')).not.toBeInTheDocument()
   })
 
-  it('previews and confirms reimport from a selected local time', async () => {
+  it('downloads and confirms history from a selected local time', async () => {
     const timeoutSpy = vi.spyOn(window, 'setTimeout')
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = String(input)
@@ -233,28 +234,33 @@ describe('DonationAlertsPanel', () => {
       }
       if (url === '/api/donations/reimport/preview') {
         return Promise.resolve(
-          jsonResponse({ since: '2026-09-06T10:00:00+00:00', count: 2 }),
+          jsonResponse({
+            since: '2026-09-06T10:00:00+00:00',
+            count: 2,
+            archived: 2,
+            skippedUnsupported: 0,
+          }),
         )
       }
       if (url === '/api/donations/reimport') {
-        return Promise.resolve(jsonResponse({ requeued: 2 }))
+        return Promise.resolve(jsonResponse({ imported: 2 }))
       }
       return Promise.reject(new Error(`Unexpected request: ${url}`))
     })
     vi.stubGlobal('fetch', fetchMock)
     const user = userEvent.setup()
-    render(<DonationAlertsPanel existingDonationSourceIds={['existing-1']} />)
+    render(<DonationAlertsPanel />)
 
     expect(await screen.findByText('Подключено')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /DonationAlerts/ }))
     expect(screen.getByRole('button', { name: '3 ДНЯ' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '5 ДНЕЙ' })).toBeInTheDocument()
-    const dateTrigger = screen.getByLabelText('Дата повторного импорта (МСК)')
+    const dateTrigger = screen.getByLabelText('Дата начала истории (МСК)')
     expect(dateTrigger).toHaveAttribute('type', 'button')
     expect(dateTrigger.querySelector('svg')).toHaveClass('dark-date-icon')
     await user.click(dateTrigger)
     const calendar = screen.getByRole('dialog', {
-      name: 'Выбор даты повторного импорта',
+      name: 'Выбор даты начала истории',
     })
     expect(calendar).toHaveClass('dark-date-calendar')
     await user.click(within(calendar).getByRole('button', {
@@ -264,37 +270,37 @@ describe('DonationAlertsPanel', () => {
       name: /^Выбрать /,
     })[0]!)
     expect(screen.queryByRole('dialog', {
-      name: 'Выбор даты повторного импорта',
+      name: 'Выбор даты начала истории',
     })).not.toBeInTheDocument()
     const timeInput = screen.getByLabelText(
-      'Время повторного импорта (МСК), 24 часа',
+      'Время начала истории (МСК), 24 часа',
     )
     fireEvent.change(timeInput, { target: { value: '1400' } })
     expect(timeInput).toHaveAttribute('type', 'text')
     expect(timeInput).toHaveValue('14:00')
-    await user.click(screen.getByRole('button', { name: 'ПЕРЕИМПОРТИРОВАТЬ' }))
+    await user.click(screen.getByRole('button', { name: 'ЗАГРУЗИТЬ ИСТОРИЮ' }))
 
     expect(await screen.findByRole('alertdialog')).toHaveTextContent(
-      'Подготовить к повторному импорту 2 доната',
+      'Добавить 2 доната',
     )
-    await user.click(screen.getByRole('button', { name: 'Переимпортировать' }))
+    await user.click(screen.getByRole('button', { name: 'Добавить' }))
 
     expect(
-      await screen.findByText(/Подготовлено к повторному импорту: 2/),
+      await screen.findByText(/Добавлено из истории DonationAlerts: 2/),
     ).toBeInTheDocument()
     expect(timeoutSpy).toHaveBeenCalledWith(expect.any(Function), 5_000)
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/donations/reimport/preview',
       expect.objectContaining({
         method: 'POST',
-        body: expect.stringContaining('"excludeSourceIds":["existing-1"]'),
+        body: expect.stringMatching(/^\{"since":"[^"]+"\}$/),
       }),
     )
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/donations/reimport',
       expect.objectContaining({
         method: 'POST',
-        body: expect.stringContaining('"excludeSourceIds":["existing-1"]'),
+        body: expect.stringMatching(/^\{"since":"[^"]+"\}$/),
       }),
     )
   })
@@ -321,7 +327,7 @@ describe('DonationAlertsPanel', () => {
 
     expect(await screen.findByText('Подключено')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /DonationAlerts/ }))
-    await user.click(screen.getByRole('button', { name: 'ПЕРЕИМПОРТИРОВАТЬ' }))
+    await user.click(screen.getByRole('button', { name: 'ЗАГРУЗИТЬ ИСТОРИЮ' }))
 
     expect(
       await screen.findByText(/Локальный сервер вернул HTTP 405.*Перезапустите Gambalator/),

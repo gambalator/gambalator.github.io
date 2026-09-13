@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import threading
+import time
+from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -14,6 +16,7 @@ LAST_SEEN_ID_KEY = "donationalerts.last_seen_id"
 LAST_SUCCESS_AT_KEY = "donationalerts.last_success_at"
 BASELINE_INITIALIZED_KEY = "donationalerts.baseline_initialized"
 AUTO_CHAT_STATE_KEY = "donationalerts.auto_chat"
+HISTORY_OLDEST_AT_KEY = "donationalerts.history_oldest_at"
 
 
 def utc_now() -> str:
@@ -70,6 +73,15 @@ class SyncResult:
     newest_id: str | None
 
 
+@dataclass(frozen=True, slots=True)
+class HistoryScanResult:
+    since: str
+    fetched: int
+    matched: int
+    archived: int
+    skipped_unsupported: int
+
+
 class SyncStatus:
     def __init__(self, configured: bool):
         self._lock = threading.Lock()
@@ -100,12 +112,16 @@ class SyncService:
         poll_interval_seconds: float,
         import_existing: bool,
         max_pages_per_sync: int,
+        after_insert: Callable[[], object] | None = None,
+        history_page_delay_seconds: float = 1.05,
     ):
         self.database = database
         self.source = source
         self.poll_interval_seconds = poll_interval_seconds
         self.import_existing = import_existing
         self.max_pages_per_sync = max_pages_per_sync
+        self.after_insert = after_insert
+        self.history_page_delay_seconds = history_page_delay_seconds
         self.status = SyncStatus(configured=source is not None)
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
@@ -191,6 +207,8 @@ class SyncService:
             raise DonationAlertsError("Saved DonationAlerts id was not reached")
 
         inserted = self.database.insert_donations(reversed(collected))
+        if self.after_insert is not None:
+            self.after_insert()
         if newest_id is not None:
             self.database.set_state(LAST_SEEN_ID_KEY, newest_id)
         self.database.set_state(BASELINE_INITIALIZED_KEY, "1")
@@ -200,6 +218,71 @@ class SyncService:
             inserted=inserted,
             newest_id=newest_id,
         )
+
+    def scan_history_since(
+        self,
+        since: str,
+        supported_currencies: set[str],
+    ) -> HistoryScanResult:
+        if self.source is None:
+            raise DonationAlertsError("DonationAlerts access token is not configured")
+
+        try:
+            cutoff = datetime.fromisoformat(since)
+        except ValueError as error:
+            raise DonationAlertsError("Historical import timestamp is invalid") from error
+        if cutoff.tzinfo is None or cutoff.utcoffset() is None:
+            raise DonationAlertsError("Historical import timestamp must include a timezone")
+        cutoff = cutoff.astimezone(UTC)
+
+        with self._sync_lock:
+            fetched_at = utc_now()
+            fetched = 0
+            matched = 0
+            skipped_unsupported = 0
+            collected: list[Donation] = []
+
+            for requested_page in range(1, self.max_pages_per_sync + 1):
+                if requested_page > 1 and self.history_page_delay_seconds > 0:
+                    time.sleep(self.history_page_delay_seconds)
+                page = self.source.fetch_page(requested_page)
+                fetched += len(page.items)
+                reached_cutoff = False
+
+                for payload in page.items:
+                    donated_at = _donation_time(payload)
+                    if donated_at < cutoff:
+                        reached_cutoff = True
+                        continue
+                    matched += 1
+                    donation = normalize_donation(payload, fetched_at, is_chat=False)
+                    if donation.currency not in supported_currencies:
+                        skipped_unsupported += 1
+                        continue
+                    collected.append(donation)
+
+                if reached_cutoff or page.current_page >= page.last_page or not page.items:
+                    break
+            else:
+                raise DonationAlertsError(
+                    "Historical import exceeded GAMBALATOR_MAX_PAGES_PER_SYNC "
+                    "before reaching the selected date"
+                )
+
+            archived = self.database.insert_donations(
+                reversed(collected),
+                acknowledged_at=fetched_at,
+            )
+            previous_since = self.database.get_state(HISTORY_OLDEST_AT_KEY)
+            if previous_since is None or datetime.fromisoformat(previous_since) > cutoff:
+                self.database.set_state(HISTORY_OLDEST_AT_KEY, cutoff.isoformat())
+            return HistoryScanResult(
+                since=cutoff.isoformat(),
+                fetched=fetched,
+                matched=matched,
+                archived=archived,
+                skipped_unsupported=skipped_unsupported,
+            )
 
     def start(self) -> None:
         if self.source is None or self._thread is not None:
@@ -232,3 +315,22 @@ class SyncService:
                 self._stop_event.wait(self.poll_interval_seconds)
         finally:
             self.status.update(running=False)
+
+
+def _donation_time(payload: dict[str, Any]) -> datetime:
+    source_id = str(payload.get("id", "")).strip() or "unknown"
+    value = payload.get("created_at")
+    if not isinstance(value, str) or not value.strip():
+        raise DonationAlertsError(f"Donation {source_id} does not contain created_at")
+    normalized = value.strip()
+    if normalized.endswith("Z"):
+        normalized = f"{normalized[:-1]}+00:00"
+    try:
+        result = datetime.fromisoformat(normalized)
+    except ValueError as error:
+        raise DonationAlertsError(
+            f"Donation {source_id} has an invalid created_at"
+        ) from error
+    if result.tzinfo is None or result.utcoffset() is None:
+        result = result.replace(tzinfo=UTC)
+    return result.astimezone(UTC)

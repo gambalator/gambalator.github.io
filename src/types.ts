@@ -61,6 +61,7 @@ export interface RoundResult {
   winner: string
   winningRubTenths: number
   targetRubTenths: number
+  isChatWinner?: boolean
   isLatest?: boolean
 }
 

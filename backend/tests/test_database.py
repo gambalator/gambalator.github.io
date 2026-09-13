@@ -77,7 +77,7 @@ def test_database_adds_chat_attribution_to_existing_schema(tmp_path):
     assert database.list_pending(10)[0].is_chat is False
 
 
-def test_database_requeues_only_acknowledged_donations_since_time(tmp_path):
+def test_database_lists_only_acknowledged_donations_since_time(tmp_path):
     database = Database(tmp_path / "data.sqlite3")
     database.initialize()
     database.insert_donations(
@@ -97,14 +97,9 @@ def test_database_requeues_only_acknowledged_donations_since_time(tmp_path):
     database.set_state("cursor", "3")
 
     since = "2026-09-06T13:00:00+00:00"
-    assert database.count_reimportable_since(since) == 2
-    assert database.count_reimportable_since(since, {"2"}) == 1
-    assert database.requeue_acknowledged_since(since, {"3"}) == 1
     assert [
-        (item.source_id, item.is_chat) for item in database.list_pending(10)
-    ] == [("2", True)]
-    assert database.requeue_acknowledged_since(since) == 1
-    assert [
-        (item.source_id, item.is_chat) for item in database.list_pending(10)
+        (item.source_id, item.is_chat)
+        for item in database.list_acknowledged_since(since)
     ] == [("2", True), ("3", False)]
+    assert database.list_pending(10) == []
     assert database.get_state("cursor") == "3"

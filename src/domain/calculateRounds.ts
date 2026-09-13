@@ -74,6 +74,7 @@ export function calculateRounds(
   settings: Settings,
   firstRoundNumber: number,
   createId: () => string,
+  maxRounds?: number,
 ): CalculationOutcome {
   if (settings.roundTargetTenths <= 0) {
     throw new RangeError('Round target must be positive')
@@ -98,8 +99,12 @@ export function calculateRounds(
     throw new RangeError('Contribution total is too large to calculate safely')
   }
 
-  const completedRounds = Math.floor(
+  const availableRounds = Math.floor(
     totalRubTenths / settings.roundTargetTenths,
+  )
+  const completedRounds = Math.min(
+    availableRounds,
+    maxRounds ?? availableRounds,
   )
   if (completedRounds === 0) {
     return {
@@ -113,22 +118,27 @@ export function calculateRounds(
   let amountLeftToConsume = completedRounds * settings.roundTargetTenths
   let roundRemaining = settings.roundTargetTenths
   let roundNumber = firstRoundNumber
-  let roundTotals = new Map<string, RoundContribution>()
+  let individualTotals = new Map<string, RoundContribution>()
+  let chatRubTenths = 0
   const newConsumed: ContributionEntry[] = []
   const remainingActive: ContributionEntry[] = []
   const newResults: RoundResult[] = []
 
-  const finishRound = () => {
-    const result = selectWinner(roundTotals)
+  const finishRound = (closingIsChat: boolean) => {
+    const result = closingIsChat
+      ? { winner: 'Chat', winningRubTenths: chatRubTenths }
+      : selectWinner(individualTotals)
     newResults.push({
       id: createId(),
       roundNumber,
       targetRubTenths: settings.roundTargetTenths,
+      isChatWinner: closingIsChat,
       ...result,
     })
     roundNumber += 1
     roundRemaining = settings.roundTargetTenths
-    roundTotals = new Map<string, RoundContribution>()
+    individualTotals = new Map<string, RoundContribution>()
+    chatRubTenths = 0
   }
 
   for (const { entry, rubTenths } of converted) {
@@ -142,21 +152,23 @@ export function calculateRounds(
 
     while (entryRemaining > 0 && amountLeftToConsume > 0) {
       const allocated = Math.min(entryRemaining, roundRemaining)
-      const attributedNickname = entry.isChat ? 'Chat' : entry.nickname
-      const key = normalizeNickname(attributedNickname)
-      const prior = roundTotals.get(key)
-
-      roundTotals.set(key, {
-        displayName: prior?.displayName ?? attributedNickname.trim(),
-        rubTenths: (prior?.rubTenths ?? 0) + allocated,
-      })
+      if (entry.isChat) {
+        chatRubTenths += allocated
+      } else {
+        const key = normalizeNickname(entry.nickname)
+        const prior = individualTotals.get(key)
+        individualTotals.set(key, {
+          displayName: prior?.displayName ?? entry.nickname.trim(),
+          rubTenths: (prior?.rubTenths ?? 0) + allocated,
+        })
+      }
       segments.push({ roundNumber, rubTenths: allocated })
 
       entryRemaining -= allocated
       amountLeftToConsume -= allocated
       roundRemaining -= allocated
 
-      if (roundRemaining === 0) finishRound()
+      if (roundRemaining === 0) finishRound(entry.isChat === true)
     }
 
     const fullyConsumedWithoutSplit =

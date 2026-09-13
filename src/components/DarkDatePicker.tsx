@@ -139,7 +139,7 @@ export function DarkDatePicker({
         <div
           className="dark-date-calendar"
           role="dialog"
-          aria-label="Выбор даты повторного импорта"
+          aria-label="Выбор даты начала истории"
         >
           <div className="dark-date-calendar-heading">
             <button

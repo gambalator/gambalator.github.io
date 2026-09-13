@@ -25,6 +25,7 @@ interface IntegrationStatus {
   connected: boolean
   running: boolean
   lastPersistedSuccessAt: string | null
+  historyOldestAt: string | null
   lastError: string | null
   pendingDonations: number
   credentialError: string | null
@@ -37,11 +38,8 @@ interface ReimportPreview {
   since: string
   displaySince: string
   count: number
-  excludedSourceIds: string[]
-}
-
-interface DonationAlertsPanelProps {
-  existingDonationSourceIds?: string[]
+  archived: number
+  skippedUnsupported: number
 }
 
 interface ReimportSelection {
@@ -58,7 +56,8 @@ interface ConnectionLinkState {
 
 const TRANSIENT_NOTICE_DURATION_MS = 5_000
 const TRANSIENT_NOTICE_PREFIXES = [
-  'Подготовлено к повторному импорту:',
+  'Добавлено из истории DonationAlerts:',
+  'История DonationAlerts проверена.',
   'DonationAlerts успешно подключён.',
 ]
 
@@ -133,9 +132,7 @@ function donationCountLabel(count: number): string {
   return `${count} донатов`
 }
 
-export function DonationAlertsPanel({
-  existingDonationSourceIds = [],
-}: DonationAlertsPanelProps) {
+export function DonationAlertsPanel() {
   const oauthResult = new URLSearchParams(window.location.search).get('donationalerts')
   const [expanded, setExpanded] = useState(oauthResult !== null)
   const [status, setStatus] = useState<IntegrationStatus | null>(null)
@@ -326,39 +323,45 @@ export function DonationAlertsPanel({
       `${reimportSelection.date}T${reimportSelection.time}`,
     )
     if (selectedDate === null) {
-      setError('Выберите корректные дату и время для повторного импорта.')
+      setError('Выберите корректные дату и время для загрузки истории.')
       return
     }
     if (selectedDate.getTime() > Date.now()) {
-      setError('Дата повторного импорта не может быть в будущем.')
+      setError('Дата начала истории не может быть в будущем.')
       return
     }
 
     setReimportBusy(true)
     try {
       const since = selectedDate.toISOString()
-      const excludedSourceIds = [...new Set(existingDonationSourceIds)]
       const response = await fetch('/api/donations/reimport/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ since, excludeSourceIds: excludedSourceIds }),
+        body: JSON.stringify({ since }),
       })
-      const result = await responseJson<{ since: string; count: number }>(response)
+      const result = await responseJson<{
+        since: string
+        count: number
+        archived: number
+        skippedUnsupported: number
+      }>(response)
       if (result.count === 0) {
-        setNotice('За выбранный период нет удалённых донатов для повторного импорта.')
+        setNotice('История DonationAlerts проверена. Отсутствующих донатов нет.')
+        await refreshStatus()
         return
       }
       setReimportPreview({
         since: result.since,
         displaySince: displayMoscowTime(selectedDate.toISOString()),
         count: result.count,
-        excludedSourceIds,
+        archived: result.archived,
+        skippedUnsupported: result.skippedUnsupported,
       })
     } catch (caught) {
       setError(
         caught instanceof Error
           ? caught.message
-          : 'Не удалось проверить донаты для повторного импорта.',
+          : 'Не удалось загрузить историю DonationAlerts.',
       )
     } finally {
       setReimportBusy(false)
@@ -372,27 +375,21 @@ export function DonationAlertsPanel({
     setReimportBusy(true)
     setError('')
     try {
-      const excludeSourceIds = [
-        ...new Set([
-          ...preview.excludedSourceIds,
-          ...existingDonationSourceIds,
-        ]),
-      ]
       const response = await fetch('/api/donations/reimport', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ since: preview.since, excludeSourceIds }),
+        body: JSON.stringify({ since: preview.since }),
       })
-      const result = await responseJson<{ requeued: number }>(response)
+      const result = await responseJson<{ imported: number }>(response)
       setNotice(
-        `Подготовлено к повторному импорту: ${result.requeued}. Отсутствующие записи скоро появятся в очереди.`,
+        `Добавлено из истории DonationAlerts: ${result.imported}. Записи находятся в активной очереди.`,
       )
       await refreshStatus()
     } catch (caught) {
       setError(
         caught instanceof Error
           ? caught.message
-          : 'Не удалось подготовить донаты к повторному импорту.',
+          : 'Не удалось добавить донаты из истории.',
       )
     } finally {
       setReimportBusy(false)
@@ -555,11 +552,17 @@ export function DonationAlertsPanel({
               </div>
               <div className="integration-reimport-card">
                 <div className="reimport-copy">
-                  <strong>Повторный импорт</strong>
+                  <strong>Загрузка истории</strong>
                   <span>
-                    Восстановить удалённые записи из локальной базы DonationAlerts.
-                    Существующие записи не будут продублированы.
+                    Загрузить донаты из DonationAlerts начиная с выбранного времени и
+                    восстановить удалённые записи. Дубли не создаются; впервые загруженные
+                    архивные донаты добавляются без Chat.
                   </span>
+                  {status.historyOldestAt && (
+                    <span>
+                      История уже проверена с {displayTime(status.historyOldestAt)}.
+                    </span>
+                  )}
                 </div>
                 <div className="reimport-controls">
                   <div className="reimport-shortcuts" aria-label="Быстрый выбор периода">
@@ -582,7 +585,7 @@ export function DonationAlertsPanel({
                   <div className="reimport-date-row">
                     <span className="reimport-date-label">С даты и времени (МСК, 24 ч)</span>
                     <DarkDatePicker
-                      label="Дата повторного импорта (МСК)"
+                      label="Дата начала истории (МСК)"
                       value={reimportSelection.date}
                       max={moscowDateTimeLocalValue(new Date()).slice(0, 10)}
                       onChange={(date) =>
@@ -594,7 +597,7 @@ export function DonationAlertsPanel({
                     />
                     <input
                       className="reimport-time-input"
-                      aria-label="Время повторного импорта (МСК), 24 часа"
+                      aria-label="Время начала истории (МСК), 24 часа"
                       type="text"
                       inputMode="numeric"
                       maxLength={5}
@@ -619,7 +622,7 @@ export function DonationAlertsPanel({
                       onClick={() => void previewReimport()}
                       disabled={reimportBusy || busy}
                     >
-                      {reimportBusy ? 'ПРОВЕРКА…' : 'ПЕРЕИМПОРТИРОВАТЬ'}
+                      {reimportBusy ? 'ЗАГРУЗКА…' : 'ЗАГРУЗИТЬ ИСТОРИЮ'}
                     </button>
                   </div>
                 </div>
@@ -716,9 +719,9 @@ export function DonationAlertsPanel({
 
       {reimportPreview && (
         <ConfirmDialog
-          title="Повторно импортировать донаты?"
-          message={`Подготовить к повторному импорту ${donationCountLabel(reimportPreview.count)} с ${reimportPreview.displaySince}? Уже существующие записи не будут продублированы. История победителей не изменится.`}
-          confirmLabel="Переимпортировать"
+          title="Добавить донаты из истории?"
+          message={`Добавить ${donationCountLabel(reimportPreview.count)} с ${reimportPreview.displaySince}? Новых архивных записей сохранено: ${reimportPreview.archived}. Неподдерживаемых валют пропущено: ${reimportPreview.skippedUnsupported}. Активные дубли не создаются. Использованные записи и история победителей не блокируют повторное добавление и не удаляются.`}
+          confirmLabel="Добавить"
           onConfirm={() => void confirmReimport()}
           onCancel={() => setReimportPreview(null)}
         />

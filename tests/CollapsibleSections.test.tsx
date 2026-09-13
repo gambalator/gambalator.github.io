@@ -340,6 +340,94 @@ describe('collapsible sections', () => {
     expect(onUpdate).toHaveBeenCalledWith({ ...entry, isChat: false })
   })
 
+  it('preserves split and import metadata when editing non-money fields', async () => {
+    const user = userEvent.setup()
+    const onUpdate = vi.fn()
+    const entry: ContributionEntry = {
+      id: 'split-active',
+      nickname: 'Before edit',
+      amountTenths: 18_720,
+      currency: 'RUB',
+      status: 'active',
+      frozenRubTenths: 18_720,
+      sourceReference: {
+        amountTenths: 20_000,
+        currency: 'RUB',
+      },
+      importReference: {
+        provider: 'donationalerts',
+        externalId: '99',
+        donatedAt: '2026-09-12T10:00:00+00:00',
+      },
+    }
+
+    render(
+      <EntryList
+        entries={[entry]}
+        settings={DEFAULT_SETTINGS}
+        onUpdate={onUpdate}
+        onRemove={vi.fn()}
+        onReorder={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Изменить запись Before edit' }))
+    const nickname = screen.getByLabelText('Никнейм')
+    await user.clear(nickname)
+    await user.type(nickname, 'After edit')
+    await user.click(screen.getByRole('button', { name: 'Сохранить' }))
+
+    expect(onUpdate).toHaveBeenCalledWith({
+      ...entry,
+      nickname: 'After edit',
+      isChat: false,
+    })
+  })
+
+  it('drops a stale frozen amount when editing money on a split remainder', async () => {
+    const user = userEvent.setup()
+    const onUpdate = vi.fn()
+    const entry: ContributionEntry = {
+      id: 'split-active',
+      nickname: 'Edited amount',
+      amountTenths: 18_720,
+      currency: 'RUB',
+      status: 'active',
+      frozenRubTenths: 18_720,
+      sourceReference: { amountTenths: 20_000, currency: 'RUB' },
+      importReference: {
+        provider: 'donationalerts',
+        externalId: '99',
+        donatedAt: '2026-09-12T10:00:00+00:00',
+      },
+    }
+
+    render(
+      <EntryList
+        entries={[entry]}
+        settings={DEFAULT_SETTINGS}
+        onUpdate={onUpdate}
+        onRemove={vi.fn()}
+        onReorder={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Изменить запись Edited amount' }))
+    const amount = screen.getByLabelText('Сумма')
+    await user.clear(amount)
+    await user.type(amount, '1800')
+    await user.click(screen.getByRole('button', { name: 'Сохранить' }))
+
+    expect(onUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amountTenths: 18_000,
+        sourceReference: entry.sourceReference,
+        importReference: entry.importReference,
+      }),
+    )
+    expect(onUpdate.mock.calls[0]?.[0]).not.toHaveProperty('frozenRubTenths')
+  })
+
   it('marks a consumed donation that was attributed to Chat', async () => {
     const user = userEvent.setup()
     const entry: ContributionEntry = {
@@ -362,6 +450,88 @@ describe('collapsible sections', () => {
     expect(screen.getByText('Viewer').closest('.name-cell')).toHaveClass(
       'round-winner',
     )
+  })
+
+  it('highlights only regular winners when a regular donation closes the round', async () => {
+    const user = userEvent.setup()
+    const entries: ContributionEntry[] = [
+      {
+        id: 'chat-fund',
+        nickname: 'Chat donor',
+        amountTenths: 35_000,
+        currency: 'RUB',
+        status: 'consumed',
+        roundNumber: 1,
+        frozenRubTenths: 35_000,
+        isChat: true,
+      },
+      {
+        id: 'smaller',
+        nickname: 'Smaller',
+        amountTenths: 5_000,
+        currency: 'RUB',
+        status: 'consumed',
+        roundNumber: 1,
+        frozenRubTenths: 5_000,
+      },
+      {
+        id: 'regular-closer',
+        nickname: 'Winner',
+        amountTenths: 10_000,
+        currency: 'RUB',
+        status: 'consumed',
+        roundNumber: 1,
+        frozenRubTenths: 10_000,
+      },
+    ]
+
+    render(<UsedEntries entries={entries} settings={DEFAULT_SETTINGS} />)
+    await user.click(screen.getByRole('button', { name: /ИСТОРИЯ/ }))
+
+    expect(screen.getByText('Winner').closest('.name-cell')).toHaveClass(
+      'round-winner',
+    )
+    expect(screen.getByText('Smaller').closest('.name-cell')).not.toHaveClass(
+      'round-winner',
+    )
+    expect(screen.getByText('Chat donor').closest('.name-cell')).not.toHaveClass(
+      'round-winner',
+    )
+  })
+
+  it('highlights Chat when a Chat donation closes the round', async () => {
+    const user = userEvent.setup()
+    const entries: ContributionEntry[] = [
+      {
+        id: 'regular-largest',
+        nickname: 'Largest regular donor',
+        amountTenths: 49_000,
+        currency: 'RUB',
+        status: 'consumed',
+        roundNumber: 1,
+        frozenRubTenths: 49_000,
+      },
+      {
+        id: 'chat-closer',
+        nickname: 'Chat closer',
+        amountTenths: 1_000,
+        currency: 'RUB',
+        status: 'consumed',
+        roundNumber: 1,
+        frozenRubTenths: 1_000,
+        isChat: true,
+      },
+    ]
+
+    render(<UsedEntries entries={entries} settings={DEFAULT_SETTINGS} />)
+    await user.click(screen.getByRole('button', { name: /ИСТОРИЯ/ }))
+
+    expect(screen.getByText('Chat closer').closest('.name-cell')).toHaveClass(
+      'round-winner',
+    )
+    expect(
+      screen.getByText('Largest regular donor').closest('.name-cell'),
+    ).not.toHaveClass('round-winner')
   })
 
   it('shows newest consumed groups first and highlights each winner', async () => {

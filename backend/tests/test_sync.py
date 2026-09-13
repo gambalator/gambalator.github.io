@@ -7,6 +7,7 @@ from gambalator_backend.donationalerts import DonationAlertsError, DonationPage
 from gambalator_backend.sync import (
     AUTO_CHAT_STATE_KEY,
     BASELINE_INITIALIZED_KEY,
+    HISTORY_OLDEST_AT_KEY,
     LAST_SEEN_ID_KEY,
     SyncService,
     normalize_donation,
@@ -43,6 +44,7 @@ def service(database: Database, source: FakeSource, *, import_existing: bool = F
         poll_interval_seconds=5,
         import_existing=import_existing,
         max_pages_per_sync=20,
+        history_page_delay_seconds=0,
     )
 
 
@@ -174,3 +176,126 @@ def test_invalid_donation_does_not_advance_cursor(tmp_path):
 
     assert database.get_state(LAST_SEEN_ID_KEY) == "1"
     assert database.list_pending(100) == []
+
+
+def test_history_scan_archives_new_ids_as_regular_without_moving_live_cursor(tmp_path):
+    database = Database(tmp_path / "data.sqlite3")
+    database.initialize()
+    database.insert_donations(
+        [
+            normalize_donation(
+                raw(6, created_at="2026-09-06 12:00:00"),
+                "2026-09-06T12:00:01+00:00",
+                is_chat=True,
+            )
+        ]
+    )
+    database.acknowledge("6", "2026-09-06T12:01:00+00:00")
+    database.set_state(LAST_SEEN_ID_KEY, "6")
+    source = FakeSource(
+        {
+            1: [
+                raw(6, created_at="2026-09-06 12:00:00"),
+                raw(5, created_at="2026-09-06 11:00:00"),
+            ],
+            2: [
+                raw(4, created_at="2026-09-06 10:00:00"),
+                raw(3, created_at="2026-09-06 09:00:00"),
+            ],
+            3: [raw(2, created_at="2026-09-06 08:00:00")],
+        }
+    )
+
+    result = service(database, source).scan_history_since(
+        "2026-09-06T09:30:00+00:00",
+        {"RUB"},
+    )
+
+    assert result.fetched == 4
+    assert result.matched == 3
+    assert result.archived == 2
+    assert database.get_state(LAST_SEEN_ID_KEY) == "6"
+    assert database.get_state(HISTORY_OLDEST_AT_KEY) == "2026-09-06T09:30:00+00:00"
+    assert database.list_pending(100) == []
+    assert [
+        (item.source_id, item.is_chat)
+        for item in database.list_acknowledged_since(result.since)
+    ] == [
+        ("6", True),
+        ("4", False),
+        ("5", False),
+    ]
+
+
+def test_wider_history_scan_only_archives_the_new_older_interval(tmp_path):
+    database = Database(tmp_path / "data.sqlite3")
+    database.initialize()
+    source = FakeSource(
+        {
+            1: [
+                raw(5, created_at="2026-09-06 12:00:00"),
+                raw(4, created_at="2026-09-06 11:00:00"),
+            ],
+            2: [
+                raw(3, created_at="2026-09-04 12:00:00"),
+                raw(2, created_at="2026-09-02 12:00:00"),
+            ],
+            3: [raw(1, created_at="2026-08-31 12:00:00")],
+        }
+    )
+    sync = service(database, source)
+
+    first = sync.scan_history_since("2026-09-03T12:00:00+00:00", {"RUB"})
+    second = sync.scan_history_since("2026-09-01T12:00:00+00:00", {"RUB"})
+
+    assert first.archived == 3
+    assert second.archived == 1
+    assert database.count_by_status("acknowledged") == 4
+    assert database.get_state(HISTORY_OLDEST_AT_KEY) == "2026-09-01T12:00:00+00:00"
+
+
+def test_history_scan_skips_unsupported_currency(tmp_path):
+    database = Database(tmp_path / "data.sqlite3")
+    database.initialize()
+    source = FakeSource(
+        {
+            1: [
+                raw(2, currency="GBP", created_at="2026-09-06 12:00:00"),
+                raw(1, created_at="2026-09-05 12:00:00"),
+            ]
+        }
+    )
+
+    result = service(database, source).scan_history_since(
+        "2026-09-05T00:00:00+00:00",
+        {"RUB"},
+    )
+
+    assert result.archived == 1
+    assert result.skipped_unsupported == 1
+    assert database.count_by_status("acknowledged") == 1
+
+
+def test_incomplete_history_scan_does_not_save_partial_results(tmp_path):
+    database = Database(tmp_path / "data.sqlite3")
+    database.initialize()
+    source = FakeSource(
+        {
+            1: [raw(3, created_at="2026-09-06 12:00:00")],
+            2: [raw(2, created_at="2026-09-05 12:00:00")],
+        }
+    )
+    sync = SyncService(
+        database,
+        source,
+        poll_interval_seconds=5,
+        import_existing=False,
+        max_pages_per_sync=1,
+        history_page_delay_seconds=0,
+    )
+
+    with pytest.raises(DonationAlertsError, match="before reaching the selected date"):
+        sync.scan_history_since("2026-09-01T00:00:00+00:00", {"RUB"})
+
+    assert database.count_by_status("acknowledged") == 0
+    assert database.get_state(HISTORY_OLDEST_AT_KEY) is None

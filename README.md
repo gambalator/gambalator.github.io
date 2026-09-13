@@ -3,7 +3,7 @@
 Gambalator is a desktop-oriented, Russian-language donation round calculator with an
 optional DonationAlerts integration. It keeps an ordered queue of donations, converts
 supported currencies to RUB, fills fixed-value rounds (`Гамбашары`), and records the
-largest contributor in every completed round.
+winner of every completed round according to its closing donation.
 
 The recommended mode is a completely local application: one Python process serves the
 compiled React frontend and the local API at <http://127.0.0.1:5741>. The backend polls
@@ -18,28 +18,32 @@ SQLite. No separately running frontend development server is needed for normal u
 - Drag-and-drop ordering, inline editing, row deletion, and one-decimal amounts.
 - `RUB`, `BRL`, `BYN`, `EUR`, `KZT`, `PLN`, `TRY`, `UAH`, `USD`, and `UZS` conversion using editable
   rates.
-- Automatic calculation of every complete round and automatic splitting of donations
-  that cross a round boundary.
-- Per-round winner selection, including every nickname when the maximum contribution
-  is tied.
+- Separate actions for calculating one complete round or every currently available
+  round, with automatic splitting of donations that cross a boundary.
+- Closing-donation winner mode: a Chat closer makes Chat win, while a regular closer
+  excludes Chat-attributed portions and compares regular nickname totals, including
+  exact ties.
 - Per-row golden `Chat` attribution and a persisted backend Auto-Chat mode for newly
   received DonationAlerts donations.
 - Collapsible used-entry history grouped by round, with winners and Chat-attributed
   rows highlighted.
 - Newest-first winner history, latest-result emphasis, and a wide popup for long
   nicknames.
-- Confirmed reimport of locally stored DonationAlerts donations from a Moscow date and
-  24-hour time, including `10 МИН`, `1 ЧАС`, `СЕГОДНЯ`, `3 ДНЯ`, and `5 ДНЕЙ`
-  shortcuts.
+- Confirmed historical download and restore from a Moscow date and 24-hour time,
+  including `10 МИН`, `1 ЧАС`, `СЕГОДНЯ`, `3 ДНЯ`, and `5 ДНЕЙ` shortcuts.
 - Independent page-to-backend and backend-to-DonationAlerts connection indicators.
-- Automatic browser and backend persistence across restarts and project-folder
-  updates.
+- Optional Only_DA-Goal companion with a synchronized OBS overlay, one-console
+  supervisor, and global F6/F7 actions for one/all round calculation.
+- Backend SQLite persistence in local mode and separate browser persistence in static
+  mode, both surviving restarts; local data also survives project-folder updates.
 
 Detailed operator documentation is available in Russian:
 
 - [Windows installation and launch guide](./WINDOWS_INSTALL_RU.md)
 - [Complete frontend user guide](./USER_GUIDE_RU.md)
 - [Calculation and currency rules](./CALCULATION_LOGIC_RU.md)
+- [Step-by-step Only_DA-Goal preparation](./ONLY_DA_GOAL_INSTALL_RU.md)
+- [Only_DA-Goal companion and OBS integration](./ONLY_DA_GOAL_COMPANION_RU.md)
 
 Engineering references:
 
@@ -56,7 +60,7 @@ Browser: http://127.0.0.1:5741
 Local Python server
   ├── / and /assets/*  → compiled React frontend from dist/
   ├── /api/*           → local Gambalator API
-  ├── SQLite           → cursor, donations, acknowledgements, Auto-Chat
+  ├── SQLite           → calculator state, donations, cursors, Auto-Chat
   └── OAuth/API        → DonationAlerts
 ```
 
@@ -141,10 +145,16 @@ Donations received after that baseline are fetched on later polls. Subsequent re
 continue from the persisted ID and catch up donations received while Gambalator was
 offline.
 
-Supported donations are saved to browser storage before the frontend acknowledges
-them in SQLite. Source IDs make polling and acknowledgement retries idempotent.
+Supported donations are inserted into backend-owned calculator state before they are
+acknowledged in SQLite. Source IDs make reconciliation and acknowledgement retries idempotent,
+and the browser does not need to be open.
 Unsupported currencies remain pending and are reported in the UI instead of receiving
 an invented conversion rate.
+
+Manual additions, edits, ordering, Chat changes, settings, calculations, and winner
+history are also persisted by the backend in local mode. They are not stored in the
+DonationAlerts `donations` ledger; both kinds of data share the same SQLite file but
+use different tables.
 
 See [backend/README.md](./backend/README.md) for OAuth configuration, environment
 overrides, API routes, synchronization behavior, and backend-only development details.
@@ -153,8 +163,9 @@ overrides, API routes, synchronization behavior, and backend-only development de
 
 The connected UI contains an `Авто-Chat для новых донатов` switch. Its state is stored
 in SQLite and captured when the backend receives each new donation. Changing it does
-not rewrite donations already stored by the backend, and reimported rows retain their
-original value.
+not rewrite donations already stored by the backend, and restored rows retain their
+original value. Previously unknown rows discovered by a historical scan are always
+stored with Chat disabled.
 
 The same setting can be controlled through the loopback API while Gambalator is
 running:
@@ -173,30 +184,46 @@ curl --request PUT --header "Content-Type: application/json" --data '{"enabled":
 Use `{"enabled":false}` to disable it explicitly. On Windows PowerShell, use
 `curl.exe` instead of `curl` if `curl` is mapped to a PowerShell command.
 
-## Reimport behavior
+## Historical download and restore
 
-The connected DonationAlerts panel can return acknowledged local records to the
-pending queue from a selected Moscow date and time. Reimport:
+The connected DonationAlerts panel can download account history back to a selected
+Moscow date and time and restore known rows removed from calculator state. The flow:
 
-- previews the number of restorable donations and requires confirmation;
-- excludes DonationAlerts source IDs still present in browser state;
-- does not duplicate existing active or consumed rows;
+- scans DonationAlerts pages back to the selected timestamp before showing a preview;
+- archives newly discovered supported IDs in SQLite without activating them until confirmation;
+- imports newly downloaded history as regular rows with Chat disabled;
+- does not duplicate a DonationAlerts source ID that is still in the active queue;
+- deliberately ignores consumed rows and winner history when deciding what can be
+  restored, so an already calculated or manually removed donation can be added again
+  in full for a new calculation;
 - does not rewind the DonationAlerts synchronization cursor;
-- preserves the Chat value captured when each donation was first received;
+- preserves the captured Chat value of records that were already known locally;
 - reinserts restored donations into their original chronological calculation position;
-- acknowledges imported rows sequentially to avoid saturating the local request queue;
+- keeps the DonationAlerts ledger acknowledged and writes restored active rows
+  directly to authoritative calculator state;
 - does not alter winner history.
 
-Only donations already stored in the local SQLite database can be reimported. This is
-not a general download of the DonationAlerts account's complete history.
+Repeating the operation with an earlier date does not download duplicate ledger rows.
+If prior donations are still active, selecting five days after three days adds only
+newly discovered older IDs. Donations that have since been consumed or manually
+removed are intentionally restored again when they fall in the selected range. Their
+previous consumed rows and winner results remain until the operator clears them. The
+backend records the oldest successfully scanned timestamp separately from the forward
+live-donation cursor.
 
 ## Persistence
 
 | Data | Default location |
 |---|---|
-| Calculation settings, active and consumed entries, ordering, Chat flags, winner history | Browser `localStorage` for `http://127.0.0.1:5741`, key `gambalator:state` |
-| DonationAlerts cursor, normalized donations, pending/acknowledged state, Auto-Chat | SQLite in the OS application-data directory |
+| Calculation settings, active and consumed entries, ordering, Chat flags, winner history (local mode) | SQLite in the OS application-data directory |
+| Static-build calculator state | Browser `localStorage`, key `gambalator:state` |
+| DonationAlerts cursor, normalized donations, pending/acknowledged state, Auto-Chat | The same SQLite database |
+| Earliest successfully scanned DonationAlerts history timestamp | The same SQLite database (`sync_state`) |
 | App ID, API Key, access token, refresh token | OS credential store when available; application-data file fallback |
+
+There is intentionally no automatic migration from an older browser `localStorage`
+state into backend SQLite. The first local-backend run starts with default calculator
+state without deleting the separate static-browser data.
 
 Default backend data directories:
 
@@ -206,10 +233,15 @@ Default backend data directories:
 Set `GAMBALATOR_DATA_DIR` to override the backend location for development or testing.
 Credential and database files must never be committed.
 
+`gambalator.sqlite3` is a binary SQLite database rather than a readable text file. It
+can be inspected with DB Browser for SQLite or the `sqlite3` command while the app is
+stopped. Back it up before making manual changes. `calculator_state` contains the
+calculator JSON, `donations` contains the DonationAlerts ledger, and `sync_state`
+contains synchronization cursors and switches.
+
 Because normal state lives outside the source directory, a newly downloaded copy on
-the same computer reuses it when started under the same OS user. Frontend state also
-requires the same browser profile, scheme, host, and port. For example,
-`http://localhost:5741` and `http://127.0.0.1:5741` have separate browser storage.
+the same computer reuses it when started under the same OS user. Only the standalone
+static build has browser-profile-specific state.
 
 ## Frontend development
 
@@ -248,7 +280,7 @@ Open `dist-single/index.html` directly in a browser. The file contains the front
 code, CSS, and logo, and can be copied by itself after it has been built.
 
 Standalone mode supports the manual calculator. It cannot use DonationAlerts OAuth,
-reliable synchronization, Auto-Chat, or reimport because no Python API is running.
+reliable synchronization, Auto-Chat, or historical download because no Python API is running.
 Storage behavior for a `file://` page depends on the browser and is always separate
 from the state at `http://127.0.0.1:5741`.
 

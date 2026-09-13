@@ -24,7 +24,13 @@ function HistoryList({ history, expanded = false }: HistoryListProps) {
             <span className="round-label">Гамбашар </span>
             {result.roundNumber}
           </span>
-          <strong className={result.winner === 'Chat' ? 'chat-winner' : ''}>
+          <strong
+            className={
+              (result.isChatWinner ?? result.winner === 'Chat')
+                ? 'chat-winner'
+                : ''
+            }
+          >
             {result.winner}
           </strong>
           <span>{formatTenths(result.winningRubTenths)} RUB</span>

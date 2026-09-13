@@ -67,27 +67,37 @@ function rubEquivalent(entry: ContributionEntry, settings: Settings): number {
   )
 }
 
-function attributedNickname(entry: ContributionEntry): string {
-  return entry.isChat ? 'Chat' : entry.nickname
+interface RoundWinnerSelection {
+  chatWins: boolean
+  individualKeys: Set<string>
 }
 
-function winnerKeysFor(
+function winnerSelectionFor(
   items: Array<{ entry: ContributionEntry; position: number }>,
   settings: Settings,
-): Set<string> {
+): RoundWinnerSelection {
+  const closingEntry = items[items.length - 1]?.entry
+  if (closingEntry?.isChat === true) {
+    return { chatWins: true, individualKeys: new Set() }
+  }
+
   const totals = new Map<string, number>()
 
   for (const { entry } of items) {
-    const key = normalizeNickname(attributedNickname(entry))
+    if (entry.isChat) continue
+    const key = normalizeNickname(entry.nickname)
     totals.set(key, (totals.get(key) ?? 0) + rubEquivalent(entry, settings))
   }
 
   const largest = Math.max(...totals.values())
-  return new Set(
-    [...totals.entries()]
-      .filter(([, total]) => total === largest)
-      .map(([key]) => key),
-  )
+  return {
+    chatWins: false,
+    individualKeys: new Set(
+      [...totals.entries()]
+        .filter(([, total]) => total === largest)
+        .map(([key]) => key),
+    ),
+  }
 }
 
 function ConsumedRow({
@@ -180,15 +190,21 @@ function SortableRow({
       return
     }
 
-    onUpdate({
+    const updatedEntry: ContributionEntry = {
+      ...entry,
       id: entry.id,
       nickname: nickname.trim(),
       isChat,
       amountTenths,
       currency,
       status: 'active',
-      importReference: entry.importReference,
-    })
+    }
+    if (amountTenths !== entry.amountTenths || currency !== entry.currency) {
+      delete updatedEntry.frozenRubTenths
+      delete updatedEntry.appliedRateTenths
+      delete updatedEntry.appliedRateUnits
+    }
+    onUpdate(updatedEntry)
     setError('')
     setEditing(false)
   }
@@ -412,11 +428,10 @@ export function UsedEntries({ entries, settings }: UsedEntriesProps) {
   })
 
   const groupedByRound = [...groupsByRound.entries()]
-    .map(([roundNumber, items]) => ({
-      roundNumber,
-      items,
-      winnerKeys: winnerKeysFor(items, settings),
-    }))
+    .map(([roundNumber, items]) => {
+      const winnerSelection = winnerSelectionFor(items, settings)
+      return { roundNumber, items, ...winnerSelection }
+    })
     .sort((first, second) => second.roundNumber - first.roundNumber)
 
   if (consumed.length === 0) return null
@@ -446,9 +461,9 @@ export function UsedEntries({ entries, settings }: UsedEntriesProps) {
                 key={entry.id}
                 entry={entry}
                 position={position}
-                isWinner={group.winnerKeys.has(
-                  normalizeNickname(attributedNickname(entry)),
-                )}
+                isWinner={entry.isChat
+                  ? group.chatWins
+                  : group.individualKeys.has(normalizeNickname(entry.nickname))}
               />
             ))}
           </div>

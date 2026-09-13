@@ -7,6 +7,7 @@ import type {
 } from './types'
 
 export type AppAction =
+  | { type: 'state/replace'; state: AppState }
   | { type: 'settings/update'; settings: Settings }
   | { type: 'settings/rates-update'; rates: CurrencyRateSettings }
   | { type: 'entry/add'; entry: ContributionEntry }
@@ -22,6 +23,7 @@ export type AppAction =
   | { type: 'used/clear' }
   | { type: 'entries/clear' }
   | { type: 'history/clear' }
+  | { type: 'calculation/run'; maxRounds: 1 | null }
 
 function activeEntries(state: AppState): ContributionEntry[] {
   return state.entries.filter((entry) => entry.status === 'active')
@@ -112,6 +114,8 @@ function mergeImportedEntries(
 
 export function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
+    case 'state/replace':
+      return action.state
     case 'settings/update':
       return { ...state, settings: action.settings }
     case 'settings/rates-update':
@@ -200,5 +204,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, entries: [] }
     case 'history/clear':
       return { ...state, history: [] }
+    case 'calculation/run':
+      return state
   }
 }

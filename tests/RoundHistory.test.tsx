@@ -60,6 +60,46 @@ describe('RoundHistory', () => {
     expect(screen.getByText('Alice, Bob')).toBeInTheDocument()
   })
 
+  it('does not style a regular winner literally named Chat as a Chat winner', () => {
+    render(
+      <RoundHistory
+        onClear={vi.fn()}
+        history={[
+          {
+            id: 'regular-chat-name',
+            roundNumber: 1,
+            winner: 'Chat',
+            winningRubTenths: 10_000,
+            targetRubTenths: 50_000,
+            isChatWinner: false,
+          },
+        ]}
+      />,
+    )
+
+    expect(screen.getByText('Chat')).not.toHaveClass('chat-winner')
+  })
+
+  it('styles the shared Chat winner from its explicit result flag', () => {
+    render(
+      <RoundHistory
+        onClear={vi.fn()}
+        history={[
+          {
+            id: 'shared-chat',
+            roundNumber: 1,
+            winner: 'Chat',
+            winningRubTenths: 1_000,
+            targetRubTenths: 50_000,
+            isChatWinner: true,
+          },
+        ]}
+      />,
+    )
+
+    expect(screen.getByText('Chat')).toHaveClass('chat-winner')
+  })
+
   it('opens a wide dialog where long winner nicknames remain fully available', async () => {
     const user = userEvent.setup()
     const longNickname = 'Chel_ОченьДлинныйНикнеймБезСокращения_123456789'

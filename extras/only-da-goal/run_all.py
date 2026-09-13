@@ -320,6 +320,9 @@ def main() -> int:
         )
 
         goal_url = f"http://127.0.0.1:{GOAL_PORT}/donationGoalRGG"
+        gambalator_goal_url = (
+            f"http://127.0.0.1:{GOAL_PORT}/donationObsOverlay"
+        )
         gambalator_url = f"http://127.0.0.1:{port}/api/health"
         wait_until_ready(
             processes,
@@ -329,7 +332,8 @@ def main() -> int:
             },
         )
         print(flush=True)
-        print(f"OBS goal:    {goal_url}", flush=True)
+        print(f"OBS goal (Gambalator): {gambalator_goal_url}", flush=True)
+        print(f"OBS goal (legacy):     {goal_url}", flush=True)
         print(f"Gambalator:  http://127.0.0.1:{port}/", flush=True)
         print("Press Ctrl+C or close this console to stop both applications.", flush=True)
         return monitor(processes)

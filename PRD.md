@@ -1,14 +1,17 @@
 # Gambalator — Product Requirements Document
 
-**Status:** Static application implemented; local DonationAlerts integration in progress
+**Status:** Static calculator and local DonationAlerts/OBS integration implemented
 **Version:** 1.1
-**Date:** 2026-09-06
+**Date:** 2026-09-13
 
 ## 1. Product summary
 
 Gambalator is a Russian-language, desktop-only webpage for dividing an ordered stream of viewer contributions into fixed-value rounds and identifying the participant with the largest total contribution in each completed round.
 
-The core calculator can run entirely in the browser, persists data locally, and is deployable as a static site. An optional local Python companion service provides reliable DonationAlerts synchronization without requiring public hosting.
+The calculator can run as a manual static site with browser persistence. The
+recommended local mode uses a Python service as the authoritative SQLite-backed state
+owner and provides reliable DonationAlerts synchronization, history download, an OBS
+overlay API, and calculation requests that do not require the page to remain open.
 
 ## 2. Goals
 
@@ -17,16 +20,19 @@ The core calculator can run entirely in the browser, persists data locally, and 
 - Process contributions in their canonical queue order into as many complete rounds as possible.
 - Show the largest contributor for every completed round, or all tied nicknames when multiple contributors share the largest total.
 - Clearly distinguish consumed entries from entries still available for future rounds.
-- Preserve the working state after a page refresh without requiring an account or backend.
-- When the optional local service is running, recover DonationAlerts donations received while Gambalator was offline and import each donation at most once.
+- Preserve the working state after refresh: in browser storage for static mode and in
+  SQLite for local mode.
+- Recover DonationAlerts donations received while Gambalator was offline, download
+  older history on demand, and import each source ID at most once.
+- Keep UI calculation, external hotkeys, DonationAlerts import, and OBS progress on one
+  transactional local state without requiring an open browser page.
 
 ## 3. Out of scope for the initial version
 
 - Publicly hosted backend services, Gambalator accounts, or cross-device synchronization.
-- Automatic/live exchange-rate retrieval.
 - Mobile-specific layouts.
-- Import, export, and collaborative editing.
-- Undo/redo and restoring cleared data.
+- General file import/export and collaborative editing.
+- Undo/redo and restoring cleared manual-only data.
 - Analytics beyond the per-round winner history.
 
 ## 4. Target user and platform
@@ -40,7 +46,8 @@ The core calculator can run entirely in the browser, persists data locally, and 
 
 ## 5. Page structure
 
-The page contains two primary components.
+The page contains the DonationAlerts integration panel, the donation workspace, and
+the calculation settings panel.
 
 The header uses the project artwork as its logo inside a prominent pink frame, preserving the rounded corners, slight tilt, and shadow.
 
@@ -65,7 +72,8 @@ Use a compact, directly editable rate table rather than unlabeled standalone fie
 - `1 USD = [85.5] RUB`
 - Additional collapsed rates: `1 BYN = [28.2] RUB`, `100 KZT = [19.0] RUB`, `10 UAH = [19.4] RUB`, `1 BRL = [17.0] RUB`, `10 TRY = [17.9] RUB`, `1 PLN = [23.2] RUB`, `10000 UZS = [73.1] RUB`.
 - Provide a `Сохранить курсы` button so the operator explicitly commits both rates together.
-- Saved rates affect active foreign-currency entries the next time `РАССЧИТАТЬ` is pressed.
+- Saved rates affect active foreign-currency entries the next time either calculation
+  action is used.
 - Existing consumed rows and result history never change when a rate changes.
 - Rate inputs are visually larger than ordinary compact fields. Keep EUR and USD visible, and hide BYN, KZT, UAH, BRL, TRY, PLN, and UZS under `ОТКРЫТЬ ВСЕ ВАЛЮТЫ` by default. Do not show a redundant `1 RUB = 1 RUB` row.
 - `Текущая сумма раунда`, `Курсы валют`, and `Стоимость указанного количества в рублях` use prominent, readable text.
@@ -134,7 +142,10 @@ Consumed rows:
 
 Controls below or beside the list:
 
-- `РАССЧИТАТЬ` — process all complete rounds currently available using a large, prominent label.
+- `РАССЧИТАТЬ ВСЕ` — process all complete rounds currently available using a large,
+  prominent pink label.
+- `Рассчитать один` — process no more than one complete round using the yellow
+  secondary action.
 - `Удалить использованные` — remove all pale consumed rows after confirmation; result history remains.
 - `Очистить все записи` — remove all active and consumed contribution rows after confirmation; result history and settings remain.
 
@@ -179,7 +190,9 @@ For a tied result, display every tied nickname in their first-appearance order. 
 7. Finalize every complete round in one calculation action.
 8. Do not finalize the last incomplete round. Rows or row portions belonging only to it remain active and use normal styling.
 
-Calculation is transactional: pressing `РАССЧИТАТЬ` must either produce the full set of newly completed rounds and row transformations or leave the prior state unchanged if an unexpected error occurs.
+Calculation is transactional: either calculation action must produce its complete set
+of winner and row transformations or leave the prior state unchanged if an unexpected
+error occurs.
 
 ### 6.3. Automatic splitting
 
@@ -197,13 +210,16 @@ Example: `100.0 USD` at `85.5` equals `8550.0 RUB`. If `5000.0 RUB` is needed to
 
 ### 6.4. Winner selection
 
-- Within each completed round, aggregate all allocated portions by normalized nickname.
-- Attribute every entry with its enabled `Chat` toggle to the shared `Chat` nickname; multiple such entries are combined even when their typed nicknames differ.
+- Determine the winner mode from the allocated portion that closes the round boundary.
+- If the closing portion has `Chat` enabled, force the shared `Chat` winner and report the sum of every Chat-attributed portion allocated to that round.
+- If the closing portion does not have `Chat` enabled, exclude every Chat-attributed portion from winner selection and aggregate only regular portions by normalized nickname.
 - Normalize nicknames by trimming surrounding spaces and comparing case-insensitively.
 - Preserve and display the spelling from the first matching entry.
 - Do not merge visually similar but different characters, such as Latin `A` and Cyrillic `А`.
-- The nickname with the largest aggregated RUB contribution wins the round.
-- If two or more nicknames share the exact largest value at one-decimal RUB precision, list all of those nicknames in the result.
+- Do not merge a regular donor whose literal nickname is `Chat` with Chat-attributed entries. Persist whether the result is the shared Chat winner separately from its display text.
+- In regular-winner mode, the nickname with the largest aggregated RUB contribution wins the round. The regular closing portion guarantees at least one eligible candidate.
+- If two or more regular nicknames share the exact largest value at one-decimal RUB precision, list all of those nicknames in the result.
+- Apply the closing-portion rule independently at every boundary crossed by a split donation.
 - There is exactly one result item for every completed round.
 
 ### 6.5. Reference example
@@ -232,20 +248,24 @@ Expected results:
 - Reject `NaN`, infinity, negative numbers, zero, and malformed numeric text.
 - Show concise inline validation messages in Russian next to the relevant field.
 - Invalid forms cannot be submitted.
-- `РАССЧИТАТЬ` is disabled when there are no active entries or settings contain unsaved/invalid changes.
+- Calculation buttons are disabled when there are no active entries or settings contain unsaved/invalid changes.
 - If the active entries cannot complete a round, keep all data unchanged and show a neutral Russian message explaining how much RUB is still needed.
 - Calculation feedback messages automatically disappear after 10 seconds.
 - Destructive bulk actions require a dark, in-app confirmation dialog that names exactly what will and will not be cleared.
 
 ## 8. Persistence
 
-- Automatically save settings, rows and their states, ordering, source-currency references, and result history to browser `localStorage` after every successful mutation.
-- Restore the complete saved state after refresh or browser reopening.
+- In local mode, automatically save settings, rows and their states, ordering,
+  source-currency references, and result history to backend SQLite after every
+  successful mutation.
+- In the standalone static build, persist the same shape in browser `localStorage`.
+- Restore the complete saved state after refresh or reopening.
 - Store a schema version so later releases can migrate persisted data safely.
 - Saving must be scoped to Gambalator and must not use cookies.
-- Data is local to the current browser and device; do not add explanatory storage text near the bulk-clear controls.
+- Data is local to the current device; do not add explanatory storage text near the bulk-clear controls.
 - If stored data is corrupt or incompatible, preserve it where feasible, show a Russian recovery message, and offer to start with an empty list while retaining recoverable valid settings.
-- The optional Python service stores DonationAlerts synchronization cursors, normalized donations, and import acknowledgements in a local SQLite database.
+- Local mode stores calculator state, DonationAlerts synchronization cursors,
+  normalized donations, and import acknowledgements in SQLite.
 - On its first connection, the service establishes the latest donation as its baseline by default and does not import the account's entire historical donation list.
 - On later starts, it paginates through DonationAlerts history until it reaches the saved ID, allowing donations received during downtime to be recovered.
 
@@ -254,7 +274,8 @@ Expected results:
 - Optimize the layout for desktop widths; mobile optimization is not required in version 1.
 - Keep the dark interface theme and use soft pink (`#FA75DB`) as the primary product color, with yellow and orange as secondary accents.
 - Maintain clear visual separation between `Настройки` and `Взносы`.
-- Keep the primary `РАССЧИТАТЬ` action visually prominent.
+- Keep the primary `РАССЧИТАТЬ ВСЕ` action visually prominent; keep
+  `Рассчитать один` as the yellow secondary action.
 - Do not communicate consumed status through color alone; include a text label or status icon with an accessible name.
 - All controls must be keyboard reachable and have visible focus states.
 - Drag-and-drop supports keyboard operation; separate up/down arrow buttons are not shown.
@@ -268,8 +289,9 @@ Expected results:
 - React with TypeScript for the component UI and typed application model.
 - Vite for local development and production builds.
 - Plain CSS with CSS custom properties; no utility-CSS or component framework.
-- React `useReducer` for application state; no external global-state library.
-- Browser `localStorage` behind a versioned storage adapter.
+- React `useReducer` for static-mode application state; no external global-state library.
+- SQLite-backed calculator service for local mode and browser `localStorage` behind a
+  versioned adapter for the standalone static build.
 - dnd-kit for sortable active rows through a drag handle.
 - Vitest for the pure calculation engine and storage tests.
 - React Testing Library for component behavior tests.
@@ -305,32 +327,53 @@ Expected results:
 - Let the operator restart authorization with one button while reusing the locally saved App ID and API Key; do not redirect to DonationAlerts automatically at startup.
 - After manual disconnection, represent a saved API Key with a masked placeholder and explanatory text without returning the secret to the browser.
 - Provide an `Авто-Chat для новых донатов` toggle, disabled by default. Capture its state when the backend receives each new donation and import enabled donations with their row-level golden `Chat` toggle on.
-- Persist automatic Chat attribution in SQLite, retain the captured value through delayed import and reimport, and do not change donations already received when the global toggle changes.
+- Persist automatic Chat attribution in SQLite, retain the captured value through
+  delayed import and restore, and do not change donations already received when the
+  global toggle changes. Newly discovered historical rows are always regular and no
+  import-as-Chat option is offered.
 - Expose loopback REST endpoints to read, set explicitly, and invert automatic Chat attribution; synchronize external changes back to the visible toggle.
 - Bind the HTTP service to `127.0.0.1` by default and never return the DonationAlerts token through its local API.
 - Serve the built React application and local API from the same origin at `http://127.0.0.1:5741`, avoiding the legacy application's port `5000`.
-- Keep the legacy `pscript/Only_DA-Goal` project unchanged and independent.
+- Store manual and imported entries, settings, Chat flags, consumed rows, and winner
+  history in authoritative backend SQLite state so the browser need not remain open.
+- Expose `/api/overlay/state` for the current active RUB total and round target, and
+  accept transactional one-round or all-round requests through
+  `/api/calculator/actions`.
+- Keep Gambalator independent from the sibling `Only_DA-Goal`; companion integration
+  uses only the loopback overlay and calculator-action APIs. Distribution copies live
+  under `extras/only-da-goal/`.
 - Store runtime data in the operating system's application-data directory, with an environment override for development and testing.
 - Keep unsupported currencies pending and identify them explicitly instead of silently converting them with a hardcoded rate.
-- Use a persisted unique DonationAlerts ID for deduplication across polling, browser refreshes, and process restarts.
+- Use a persisted unique DonationAlerts ID for deduplication across polling and process restarts.
 - Import supported pending donations into the active queue in their original chronological order, while retaining the reversed visual presentation.
-- Persist an imported donation in browser storage before acknowledging it in the backend, and retry interrupted acknowledgements without creating duplicate rows.
-- Allow the operator to preview and confirm reimport of acknowledged backend records from a Moscow date and time, without changing the DonationAlerts synchronization cursor.
-- Use a project-styled dark calendar and explicit 24-hour `ЧЧ:ММ` Moscow-time field for reimport; never depend on the browser's native light calendar or AM/PM presentation.
-- Exclude DonationAlerts source IDs still present in browser state from both the reimport preview count and the actual requeue operation, so a positive preview always represents restorable rows.
+- Persist an imported donation in backend-owned calculator state before acknowledging it, and reconcile interrupted acknowledgements without creating duplicate rows.
+- Allow the operator to scan remote DonationAlerts history from a Moscow date and time, preview the missing supported records, and confirm their addition without changing the forward synchronization cursor.
+- Store the oldest completed historical scan separately, deduplicate repeated or wider scans by DonationAlerts source ID, and import newly discovered historical rows as regular donations with Chat disabled.
+- Use a project-styled dark calendar and explicit 24-hour `ЧЧ:ММ` Moscow-time field for historical download; never depend on the browser's native light calendar or AM/PM presentation.
+- Exclude only DonationAlerts source IDs still present in active calculator rows from historical preview and confirmation. Consumed rows and winner history must not block explicit replay, so an operator can restore the full original donation after calculation or manual removal.
+- Give every explicitly restored row a fresh internal entry ID while retaining its DonationAlerts source ID. Do not delete prior consumed rows or winner results, and keep normal live reconciliation deduplicated against active and consumed rows.
 - Insert restored DonationAlerts rows into canonical calculation order using their original donation time and DonationAlerts ID tie-breaker, while preserving the relative order of existing and manual rows.
-- Acknowledge imported DonationAlerts rows sequentially to avoid saturating the local Waitress request queue during a multi-row import.
-- Offer quick reimport time selections for the last 10 minutes, last hour, the start of the current day, three days ago, and five days ago.
+- Keep historical ledger rows acknowledged and add confirmed replays directly to calculator state; preserve the persist-before-acknowledge rule for normal pending synchronization.
+- Offer quick historical-download time selections for the last 10 minutes, last hour, the start of the current day, three days ago, and five days ago.
 - Keep a visible `Веб-страница → Локальный сервер → DonationAlerts` connection map with an independent status for each link, including synchronization errors.
 - Display healthy connection labels and their status dots in green.
-- Hide a successful reimport completion notice automatically after five seconds.
+- Hide a successful historical-import completion notice automatically after five seconds.
 - Allow the winner history to open from an icon-only expand button into a wide modal where long and tied winner names wrap without truncation.
+- In the Only_DA-Goal companion, keep legacy F20/F21/F22 behavior and use separate F6
+  and F7 bindings for one round and all available rounds. Keep successful overlay
+  polling quiet while retaining HTTP errors such as 503 in the console.
+- Let the Only_DA-Goal `run_all.py` supervisor start and stop both process trees from
+  one console, defaulting to a sibling directory named `Gambalator` and supporting a
+  `GAMBALATOR_DIR` override.
 
 ### Implementation constraints
 
-- Keep calculation logic in a pure TypeScript domain module, isolated from React and browser APIs.
+- Keep static-mode calculation in a pure TypeScript domain module. Local mode uses a
+  tested Python calculator service so UI actions, external hotkey requests, donations,
+  and OBS share one transactional state.
 - Use decimal-safe integer arithmetic internally, representing RUB tenths as integers, to avoid floating-point boundary and tie errors.
-- Keep persistence in a separate adapter so domain tests do not require `localStorage`.
+- Keep persistence in separate adapters: SQLite for local mode and `localStorage` for
+  the standalone static build.
 
 ## 11. Acceptance criteria
 
@@ -344,9 +387,26 @@ The first version is acceptable when all of the following are true:
 6. Overflow is carried into later rounds and a single nickname can win multiple rounds.
 7. A partially consumed entry is automatically split into consumed RUB portion(s) and an active RUB remainder.
 8. Multiple rows for the same normalized nickname are combined within each round.
-9. An exact tie for the largest aggregated contribution lists every tied nickname.
-10. An incomplete final round produces no result and its unconsumed entries or portions remain active.
-11. Changing the target or rates does not modify historical results or consumed rows.
-12. Refreshing the page restores all saved settings, entries, ordering, statuses, source references, and results.
-13. `Удалить использованные`, `Очистить историю`, and `Очистить все записи` perform only their documented scopes and request confirmation.
-14. All user-facing text is Russian and the application deploys successfully to GitHub Pages.
+9. A Chat-attributed closing portion forces the shared Chat winner; a regular closing portion excludes all Chat-attributed portions from winner comparison.
+10. In regular mode, an exact tie for the largest aggregated contribution lists every tied nickname.
+11. An incomplete final round produces no result and its unconsumed entries or portions remain active.
+12. Changing the target or rates does not modify historical results or consumed rows.
+13. Refreshing the page restores all saved settings, entries, ordering, statuses, source references, and results.
+14. `Удалить использованные`, `Очистить историю`, and `Очистить все записи` perform only their documented scopes and request confirmation.
+15. All user-facing text is Russian and the application deploys successfully to GitHub Pages.
+16. In local mode, manual and DonationAlerts entries persist in SQLite and continue to
+    update without an open browser page.
+17. `РАССЧИТАТЬ ВСЕ` completes every available round, while `Рассчитать один` and the
+    corresponding API action complete no more than one.
+18. The OBS overlay reads the same active total and target that the calculator uses and
+    reflects the amount consumed by either calculation action.
+19. A confirmed historical download adds only DonationAlerts IDs missing from the
+    active queue, keeps the live cursor unchanged, and assigns `isChat=false` to newly
+    discovered history. Consumed entries and winner history do not block replay.
+20. Widening a historical period does not duplicate SQLite ledger rows. Active rows
+    remain idempotent, while consumed or manually removed donations in the selected
+    period are intentionally restored in full. A failed incomplete scan does not
+    persist partial results or advance its separate historical boundary.
+21. The Only_DA-Goal companion retains legacy F20/F21/F22 behavior and uses F6/F7 for
+    the new one/all calculation actions without requiring the Gambalator page.
+22. Closing the shared supervisor console stops both Gambalator and Only_DA-Goal.

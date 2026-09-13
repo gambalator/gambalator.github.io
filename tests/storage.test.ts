@@ -23,6 +23,16 @@ describe('local storage adapter', () => {
           },
         },
       ],
+      history: [
+        {
+          id: 'round-1',
+          roundNumber: 1,
+          winner: 'Chat',
+          winningRubTenths: 10_000,
+          targetRubTenths: 50_000,
+          isChatWinner: false,
+        },
+      ],
     }
 
     expect(saveState(state)).toBe(true)

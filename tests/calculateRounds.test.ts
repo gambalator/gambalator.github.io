@@ -27,6 +27,23 @@ function idFactory() {
 }
 
 describe('calculateRounds', () => {
+  it('can limit a calculation to one complete round', () => {
+    const entries = [
+      active('1', 'first', 50_000),
+      active('2', 'second', 50_000),
+    ]
+
+    const outcome = calculateRounds(entries, settings, 1, idFactory(), 1)
+
+    expect(outcome.completedRounds).toBe(1)
+    expect(outcome.newResults.map((result) => result.winner)).toEqual(['first'])
+    expect(
+      outcome.entries
+        .filter((entry) => entry.status === 'active')
+        .map((entry) => entry.nickname),
+    ).toEqual(['second'])
+  })
+
   it('matches the reference example', () => {
     const entries = [
       active('1', 'name1', 30_000),
@@ -104,7 +121,7 @@ describe('calculateRounds', () => {
     })
   })
 
-  it('aggregates toggled donations under the Chat nickname', () => {
+  it('aggregates Chat donations when a Chat donation closes the round', () => {
     const entries = [
       active('1', 'Alice', 15_000, 'RUB', true),
       active('2', 'Bob', 20_000),
@@ -116,6 +133,92 @@ describe('calculateRounds', () => {
     expect(outcome.newResults[0]).toMatchObject({
       winner: 'Chat',
       winningRubTenths: 30_000,
+      isChatWinner: true,
+    })
+  })
+
+  it('excludes Chat donations when a regular donation closes the round', () => {
+    const entries = [
+      active('1', 'Chat donor', 35_000, 'RUB', true),
+      active('2', 'Smaller', 5_000),
+      active('3', 'Winner', 10_000),
+    ]
+
+    const outcome = calculateRounds(entries, settings, 1, idFactory())
+
+    expect(outcome.newResults[0]).toMatchObject({
+      winner: 'Winner',
+      winningRubTenths: 10_000,
+      isChatWinner: false,
+    })
+  })
+
+  it('forces Chat to win when a Chat donation closes the round', () => {
+    const entries = [
+      active('1', 'Largest regular donor', 30_000),
+      active('2', 'Other regular donor', 19_000),
+      active('3', 'Closing Chat donor', 1_000, 'RUB', true),
+    ]
+
+    const outcome = calculateRounds(entries, settings, 1, idFactory())
+
+    expect(outcome.newResults[0]).toMatchObject({
+      winner: 'Chat',
+      winningRubTenths: 1_000,
+      isChatWinner: true,
+    })
+  })
+
+  it('keeps regular ties after excluding Chat donations', () => {
+    const entries = [
+      active('1', 'Chat donor', 20_000, 'RUB', true),
+      active('2', 'Alice', 15_000),
+      active('3', 'Bob', 15_000),
+    ]
+
+    const outcome = calculateRounds(entries, settings, 1, idFactory())
+
+    expect(outcome.newResults[0]).toMatchObject({
+      winner: 'Alice, Bob',
+      winningRubTenths: 15_000,
+      isChatWinner: false,
+    })
+  })
+
+  it('decides Chat mode separately at every split round boundary', () => {
+    const entries = [
+      active('1', 'Chat donor', 60_000, 'RUB', true),
+      active('2', 'Regular closer', 40_000),
+    ]
+
+    const outcome = calculateRounds(entries, settings, 1, idFactory())
+
+    expect(outcome.newResults).toMatchObject([
+      {
+        winner: 'Chat',
+        winningRubTenths: 50_000,
+        isChatWinner: true,
+      },
+      {
+        winner: 'Regular closer',
+        winningRubTenths: 40_000,
+        isChatWinner: false,
+      },
+    ])
+  })
+
+  it('does not merge a regular nickname Chat with Chat-attributed donations', () => {
+    const entries = [
+      active('1', 'Marked donor', 40_000, 'RUB', true),
+      active('2', 'Chat', 10_000),
+    ]
+
+    const outcome = calculateRounds(entries, settings, 1, idFactory())
+
+    expect(outcome.newResults[0]).toMatchObject({
+      winner: 'Chat',
+      winningRubTenths: 10_000,
+      isChatWinner: false,
     })
   })
 

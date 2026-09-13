@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -83,6 +83,14 @@ class Database:
 
                 CREATE INDEX IF NOT EXISTS donations_status_sequence
                 ON donations(status, sequence);
+
+                CREATE TABLE IF NOT EXISTS calculator_state (
+                    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+                    schema_version INTEGER NOT NULL,
+                    revision INTEGER NOT NULL,
+                    state_json TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
                 """
             )
             donation_columns = {
@@ -115,6 +123,48 @@ class Database:
                 (key, value),
             )
 
+    def get_calculator_state(self) -> tuple[str, int] | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT state_json, revision FROM calculator_state WHERE singleton = 1"
+            ).fetchone()
+        if row is None:
+            return None
+        return str(row["state_json"]), int(row["revision"])
+
+    def mutate_calculator_state(
+        self,
+        default_json: str,
+        transform: Callable[[str], str],
+        updated_at: str,
+        *,
+        schema_version: int = 1,
+    ) -> tuple[str, int]:
+        """Serialize every calculator mutation through one SQLite transaction."""
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT state_json, revision FROM calculator_state WHERE singleton = 1"
+            ).fetchone()
+            current_json = default_json if row is None else str(row["state_json"])
+            current_revision = 0 if row is None else int(row["revision"])
+            next_json = transform(current_json)
+            next_revision = current_revision + 1
+            connection.execute(
+                """
+                INSERT INTO calculator_state(
+                    singleton, schema_version, revision, state_json, updated_at
+                ) VALUES (1, ?, ?, ?, ?)
+                ON CONFLICT(singleton) DO UPDATE SET
+                    schema_version = excluded.schema_version,
+                    revision = excluded.revision,
+                    state_json = excluded.state_json,
+                    updated_at = excluded.updated_at
+                """,
+                (schema_version, next_revision, next_json, updated_at),
+            )
+        return next_json, next_revision
+
     def get_boolean_state(self, key: str, *, default: bool = False) -> bool:
         value = self.get_state(key)
         return default if value is None else value == "1"
@@ -139,8 +189,14 @@ class Database:
             )
         return enabled
 
-    def insert_donations(self, donations: Iterable[Donation]) -> int:
+    def insert_donations(
+        self,
+        donations: Iterable[Donation],
+        *,
+        acknowledged_at: str | None = None,
+    ) -> int:
         inserted = 0
+        status = "acknowledged" if acknowledged_at is not None else "pending"
         with self._connect() as connection:
             for donation in donations:
                 cursor = connection.execute(
@@ -153,9 +209,11 @@ class Database:
                         currency,
                         donated_at,
                         fetched_at,
-                        is_chat
+                        is_chat,
+                        status,
+                        acknowledged_at
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(source_id) DO NOTHING
                     """,
                     (
@@ -167,6 +225,8 @@ class Database:
                         donation.donated_at,
                         donation.fetched_at,
                         int(donation.is_chat),
+                        status,
+                        acknowledged_at,
                     ),
                 )
                 inserted += cursor.rowcount
@@ -201,6 +261,35 @@ class Database:
             for row in rows
         ]
 
+    def list_acknowledged_since(self, since: str) -> list[Donation]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT source_id, username, amount_tenths, original_amount,
+                       currency, donated_at, fetched_at, is_chat
+                FROM donations
+                WHERE status = 'acknowledged'
+                  AND datetime(COALESCE(donated_at, fetched_at)) >= datetime(?)
+                ORDER BY sequence ASC
+                """,
+                (since,),
+            ).fetchall()
+        return [
+            Donation(
+                source_id=str(row["source_id"]),
+                username=str(row["username"]),
+                amount_tenths=int(row["amount_tenths"]),
+                original_amount=str(row["original_amount"]),
+                currency=str(row["currency"]),
+                donated_at=None
+                if row["donated_at"] is None
+                else str(row["donated_at"]),
+                fetched_at=str(row["fetched_at"]),
+                is_chat=bool(row["is_chat"]),
+            )
+            for row in rows
+        ]
+
     def acknowledge(self, source_id: str, acknowledged_at: str) -> bool:
         with self._connect() as connection:
             cursor = connection.execute(
@@ -212,59 +301,6 @@ class Database:
                 (acknowledged_at, source_id),
             )
         return cursor.rowcount == 1
-
-    def count_reimportable_since(
-        self,
-        since: str,
-        exclude_source_ids: Iterable[str] = (),
-    ) -> int:
-        excluded = set(exclude_source_ids)
-        with self._connect() as connection:
-            rows = connection.execute(
-                """
-                SELECT source_id
-                FROM donations
-                WHERE status = 'acknowledged'
-                  AND datetime(COALESCE(donated_at, fetched_at)) >= datetime(?)
-                """,
-                (since,),
-            ).fetchall()
-        return sum(str(row["source_id"]) not in excluded for row in rows)
-
-    def requeue_acknowledged_since(
-        self,
-        since: str,
-        exclude_source_ids: Iterable[str] = (),
-    ) -> int:
-        excluded = set(exclude_source_ids)
-        with self._connect() as connection:
-            connection.execute("BEGIN IMMEDIATE")
-            rows = connection.execute(
-                """
-                SELECT source_id
-                FROM donations
-                WHERE status = 'acknowledged'
-                  AND datetime(COALESCE(donated_at, fetched_at)) >= datetime(?)
-                """,
-                (since,),
-            ).fetchall()
-            source_ids = [
-                str(row["source_id"])
-                for row in rows
-                if str(row["source_id"]) not in excluded
-            ]
-            requeued = 0
-            for source_id in source_ids:
-                cursor = connection.execute(
-                    """
-                    UPDATE donations
-                    SET status = 'pending', acknowledged_at = NULL
-                    WHERE source_id = ? AND status = 'acknowledged'
-                    """,
-                    (source_id,),
-                )
-                requeued += cursor.rowcount
-        return requeued
 
     def count_by_status(self, status: str) -> int:
         with self._connect() as connection:

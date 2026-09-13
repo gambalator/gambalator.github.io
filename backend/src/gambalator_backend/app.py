@@ -5,6 +5,7 @@ from pathlib import Path
 
 from flask import Flask, jsonify, redirect, render_template_string, request, send_from_directory
 
+from .calculator import SUPPORTED_CURRENCIES, CalculatorError, CalculatorService
 from .config import Settings
 from .credentials import CredentialStorageError, CredentialStore, create_credential_store
 from .database import Database
@@ -14,6 +15,7 @@ from .oauth import OAuthManager, StaticAccessTokenProvider
 from .sync import (
     AUTO_CHAT_STATE_KEY,
     BASELINE_INITIALIZED_KEY,
+    HISTORY_OLDEST_AT_KEY,
     LAST_SEEN_ID_KEY,
     LAST_SUCCESS_AT_KEY,
     SyncService,
@@ -37,18 +39,6 @@ def _parse_since(payload: object) -> str:
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         raise ValueError("since must include a timezone")
     return parsed.astimezone(UTC).isoformat()
-
-
-def _parse_reimport_request(payload: object) -> tuple[str, set[str]]:
-    since = _parse_since(payload)
-    assert isinstance(payload, dict)
-    exclude_value = payload.get("excludeSourceIds", [])
-    if not isinstance(exclude_value, list) or not all(
-        isinstance(source_id, str) and source_id.strip()
-        for source_id in exclude_value
-    ):
-        raise ValueError("excludeSourceIds must be an array of non-empty strings")
-    return since, {source_id.strip() for source_id in exclude_value}
 
 
 def _build_oauth_manager(settings: Settings, store: CredentialStore) -> OAuthManager:
@@ -78,6 +68,7 @@ def _build_service(
     settings: Settings,
     database: Database,
     oauth_manager: OAuthManager,
+    calculator: CalculatorService,
 ) -> SyncService:
     return SyncService(
         database,
@@ -85,6 +76,7 @@ def _build_service(
         poll_interval_seconds=settings.poll_interval_seconds,
         import_existing=settings.import_existing,
         max_pages_per_sync=settings.max_pages_per_sync,
+        after_insert=calculator.reconcile_pending_donations,
     )
 
 
@@ -102,15 +94,21 @@ def create_app(
 
     database = database or Database(settings.database_path)
     database.initialize()
+    calculator = CalculatorService(database)
     credential_store = credential_store or create_credential_store(
         settings.credential_store, settings.data_dir
     )
     oauth_manager = oauth_manager or _build_oauth_manager(settings, credential_store)
-    sync_service = sync_service or _build_service(settings, database, oauth_manager)
+    sync_service = sync_service or _build_service(
+        settings, database, oauth_manager, calculator
+    )
+    sync_service.after_insert = calculator.reconcile_pending_donations
+    calculator.reconcile_pending_donations()
     exchange_rate_source = exchange_rate_source or CbrExchangeRateClient(
         timeout_seconds=min(settings.request_timeout_seconds, 5.0)
     )
     app.extensions["gambalator.database"] = database
+    app.extensions["gambalator.calculator"] = calculator
     app.extensions["gambalator.sync_service"] = sync_service
     app.extensions["gambalator.oauth_manager"] = oauth_manager
     app.extensions["gambalator.exchange_rate_source"] = exchange_rate_source
@@ -124,6 +122,27 @@ def create_app(
     @app.get("/api/health")
     def health():
         return jsonify({"status": "ok", "service": "gambalator-backend"})
+
+    @app.get("/api/calculator/state")
+    def calculator_state():
+        calculator.reconcile_pending_donations()
+        return jsonify(calculator.get_state().to_public_dict())
+
+    @app.post("/api/calculator/actions")
+    def calculator_action():
+        try:
+            result = calculator.apply_action(request.get_json(silent=True))
+        except CalculatorError as error:
+            return jsonify({"error": str(error)}), 400
+        return jsonify(result.to_public_dict())
+
+    @app.get("/api/overlay/state")
+    def overlay_state():
+        calculator.reconcile_pending_donations()
+        try:
+            return jsonify(calculator.overlay_state())
+        except CalculatorError as error:
+            return jsonify({"error": str(error)}), 500
 
     @app.get("/api/exchange-rates")
     def exchange_rates():
@@ -164,6 +183,7 @@ def create_app(
                 "credentialError": credential_error,
                 "lastSeenId": database.get_state(LAST_SEEN_ID_KEY),
                 "baselineInitialized": database.get_state(BASELINE_INITIALIZED_KEY) == "1",
+                "historyOldestAt": database.get_state(HISTORY_OLDEST_AT_KEY),
                 "lastPersistedSuccessAt": database.get_state(LAST_SUCCESS_AT_KEY),
                 "pendingDonations": database.count_by_status("pending"),
                 "acknowledgedDonations": database.count_by_status("acknowledged"),
@@ -272,17 +292,29 @@ def create_app(
     @app.post("/api/donations/reimport/preview")
     def preview_reimport():
         try:
-            since, exclude_source_ids = _parse_reimport_request(
-                request.get_json(silent=True)
-            )
+            since = _parse_since(request.get_json(silent=True))
         except ValueError as error:
             return jsonify({"error": str(error)}), 400
+        history_scan = None
+        if sync_service.source is not None:
+            try:
+                history_scan = sync_service.scan_history_since(
+                    since,
+                    SUPPORTED_CURRENCIES,
+                )
+            except DonationAlertsError as error:
+                return jsonify({"error": str(error)}), 502
         return jsonify(
             {
                 "since": since,
-                "count": database.count_reimportable_since(
-                    since,
-                    exclude_source_ids,
+                "count": calculator.count_historical_reimport(since),
+                "historyScanned": history_scan is not None,
+                "fetched": 0 if history_scan is None else history_scan.fetched,
+                "archived": 0 if history_scan is None else history_scan.archived,
+                "skippedUnsupported": (
+                    0
+                    if history_scan is None
+                    else history_scan.skipped_unsupported
                 ),
             }
         )
@@ -290,20 +322,11 @@ def create_app(
     @app.post("/api/donations/reimport")
     def reimport_donations():
         try:
-            since, exclude_source_ids = _parse_reimport_request(
-                request.get_json(silent=True)
-            )
+            since = _parse_since(request.get_json(silent=True))
         except ValueError as error:
             return jsonify({"error": str(error)}), 400
-        return jsonify(
-            {
-                "since": since,
-                "requeued": database.requeue_acknowledged_since(
-                    since,
-                    exclude_source_ids,
-                ),
-            }
-        )
+        imported = calculator.reimport_historical_donations(since)
+        return jsonify({"since": since, "imported": imported})
 
     @app.post("/api/integration/sync")
     def synchronize_now():

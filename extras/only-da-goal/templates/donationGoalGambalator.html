@@ -1,0 +1,47 @@
+<html>
+  <head>
+  </head>
+  <body>
+    <!-- Картинка и отступы оформлены так же, как в старом donationGoalRGG.html. -->
+    <!--<img id='image' src="{{ url_for('static', filename='0.png') }}" />-->
+    <p style="text-align:center;">
+      <img id="image" style="align:center;" src="{{ img }}" />
+    </p>
+    <p></p>
+    <p></p>
+    <p></p>
+    <p>
+      <!-- Здесь отображаются текущая сумма и цель, например 10000/5000. -->
+      <div
+        id="result"
+        style="color:#FFFFFF; text-shadow: 2px 4px 4px rgb(46 91 173 / 0.6); font-family: Impact;font-style: Impact; text-align:center;font-size: 40px;"
+      >{{ all }}</div>
+    </p>
+  </body>
+</html>
+
+<script>
+  // Флаг не позволяет отправить новый запрос, пока предыдущий ещё не завершился.
+  let updating = false
+
+  // Получаем готовые данные из Python start.py и заменяем картинку и текст в OBS.
+  async function updateGambalatorGoal() {
+    if (updating) return
+    updating = true
+    try {
+      const response = await fetch('/getDataGambalator', { cache: 'no-store' })
+      if (!response.ok) return
+      const goal = await response.json()
+      document.getElementById('image').src = goal.image
+      document.getElementById('result').textContent = `${goal.current}/${goal.target}`
+    } catch {
+      // Если Gambalator перезапускается, оставляем на экране последние верные данные.
+    } finally {
+      updating = false
+    }
+  }
+
+  // Обновляем OBS примерно четыре раза за три секунды и один раз сразу при открытии.
+  window.setInterval(updateGambalatorGoal, 750)
+  void updateGambalatorGoal()
+</script>
