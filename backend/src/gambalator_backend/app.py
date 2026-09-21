@@ -255,7 +255,10 @@ def create_app(
             sync_service.start()
         except (DonationAlertsError, CredentialStorageError) as error:
             return _oauth_error_page(str(error)), 502
-        return redirect("/?donationalerts=connected")
+        destination = "/?donationalerts=connected"
+        if settings.frontend_url:
+            destination = f"{settings.frontend_url}{destination}"
+        return redirect(destination)
 
     @app.post("/api/integration/disconnect")
     def disconnect_oauth():

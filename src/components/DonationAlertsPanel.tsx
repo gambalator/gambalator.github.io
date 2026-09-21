@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   displayMoscowTime,
   moscowDateTimeLocalValue,
@@ -134,7 +134,7 @@ function donationCountLabel(count: number): string {
 
 export function DonationAlertsPanel() {
   const oauthResult = new URLSearchParams(window.location.search).get('donationalerts')
-  const [expanded, setExpanded] = useState(oauthResult !== null)
+  const [dialogOpen, setDialogOpen] = useState(oauthResult !== null)
   const [status, setStatus] = useState<IntegrationStatus | null>(null)
   const [backendAvailable, setBackendAvailable] = useState<boolean | null>(null)
   const [clientId, setClientId] = useState('')
@@ -151,6 +151,8 @@ export function DonationAlertsPanel() {
   const [reimportBusy, setReimportBusy] = useState(false)
   const [reimportPreview, setReimportPreview] = useState<ReimportPreview | null>(null)
   const [autoChatBusy, setAutoChatBusy] = useState(false)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const closeRef = useRef<HTMLButtonElement>(null)
 
   const refreshStatus = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -195,6 +197,24 @@ export function DonationAlertsPanel() {
     url.searchParams.delete('donationalerts')
     window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`)
   }, [oauthResult])
+
+  useEffect(() => {
+    if (!dialogOpen) return
+    closeRef.current?.focus()
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !confirmDisconnect && !reimportPreview) {
+        setDialogOpen(false)
+        triggerRef.current?.focus()
+      }
+    }
+    window.addEventListener('keydown', closeOnEscape)
+    return () => window.removeEventListener('keydown', closeOnEscape)
+  }, [confirmDisconnect, dialogOpen, reimportPreview])
+
+  const closeDialog = () => {
+    setDialogOpen(false)
+    window.setTimeout(() => triggerRef.current?.focus(), 0)
+  }
 
   const openAuthorizationPage = async () => {
     const startResponse = await fetch('/api/integration/oauth/start', {
@@ -435,47 +455,80 @@ export function DonationAlertsPanel() {
               : { label: 'Не подключено', tone: 'disconnected' }
 
   return (
-    <section
-      className={`panel integration-panel${expanded ? ' expanded' : ''}`}
-      aria-labelledby="donationalerts-title"
-    >
+    <>
+      <ChatToggle
+        checked={status?.autoChatEnabled === true}
+        label="Включить Chat all для новых донатов DonationAlerts"
+        onChange={(enabled) => void updateAutoChat(enabled)}
+        compact
+        disabled={!status?.connected || autoChatBusy}
+        text="Chat all"
+      />
       <button
-        className="integration-toggle"
+        ref={triggerRef}
+        className={`da-header-button${integrationHealthy ? ' connected' : ' disconnected'}`}
         type="button"
-        aria-expanded={expanded}
-        aria-controls="donationalerts-content"
-        onClick={() => setExpanded((value) => !value)}
+        aria-haspopup="dialog"
+        aria-expanded={dialogOpen}
+        aria-label={`DonationAlerts: ${summary}`}
+        title={`DonationAlerts — ${summary}`}
+        onClick={() => setDialogOpen(true)}
       >
-        <span className="integration-title" id="donationalerts-title">
-          DonationAlerts
-        </span>
-        <span
-          className={`integration-status${integrationHealthy ? ' connected' : ''}${status?.lastError || status?.oauth.reauthorizationRequired ? ' error' : ''}`}
-        >
-          <span className="status-dot" aria-hidden="true" />
-          {summary}
-        </span>
-        <span className={`chevron${expanded ? ' open' : ''}`} aria-hidden="true">⌄</span>
+        <span className="status-dot" aria-hidden="true" />
+        <span>DonationAlerts</span>
       </button>
 
-      <div className="connection-map" aria-label="Состояние подключений" aria-live="polite">
-        <span className="connection-node">Веб-страница</span>
-        <span className={`connection-link ${frontendBackendConnection.tone}`}>
-          <span className="connection-line" aria-hidden="true" />
-          <strong>{frontendBackendConnection.label}</strong>
-          <span className="connection-arrow" aria-hidden="true">→</span>
-        </span>
-        <span className="connection-node">Локальный сервер</span>
-        <span className={`connection-link ${backendDonationAlertsConnection.tone}`}>
-          <span className="connection-line" aria-hidden="true" />
-          <strong>{backendDonationAlertsConnection.label}</strong>
-          <span className="connection-arrow" aria-hidden="true">→</span>
-        </span>
-        <span className="connection-node donation-alerts-node">DonationAlerts</span>
-      </div>
+      {dialogOpen && (
+        <div
+          className="dialog-backdrop integration-dialog-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeDialog()
+          }}
+        >
+          <section
+            className="integration-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="donationalerts-title"
+          >
+            <div className="integration-dialog-heading">
+              <div>
+                <h2 id="donationalerts-title">DonationAlerts</h2>
+                <span
+                  className={`integration-status${integrationHealthy ? ' connected' : ''}${!integrationHealthy ? ' error' : ''}`}
+                >
+                  <span className="status-dot" aria-hidden="true" />
+                  {summary}
+                </span>
+              </div>
+              <button
+                ref={closeRef}
+                className="history-dialog-close"
+                type="button"
+                aria-label="Закрыть настройки DonationAlerts"
+                onClick={closeDialog}
+              >
+                ×
+              </button>
+            </div>
 
-      {expanded && (
-        <div className="integration-content" id="donationalerts-content">
+            <div className="connection-map" aria-label="Состояние подключений" aria-live="polite">
+              <span className="connection-node">Веб-страница</span>
+              <span className={`connection-link ${frontendBackendConnection.tone}`}>
+                <span className="connection-line" aria-hidden="true" />
+                <strong>{frontendBackendConnection.label}</strong>
+                <span className="connection-arrow" aria-hidden="true">→</span>
+              </span>
+              <span className="connection-node">Локальный сервер</span>
+              <span className={`connection-link ${backendDonationAlertsConnection.tone}`}>
+                <span className="connection-line" aria-hidden="true" />
+                <strong>{backendDonationAlertsConnection.label}</strong>
+                <span className="connection-arrow" aria-hidden="true">→</span>
+              </span>
+              <span className="connection-node donation-alerts-node">DonationAlerts</span>
+            </div>
+
+            <div className="integration-content">
           {backendAvailable === false ? (
             <p className="integration-message">
               Автоматический импорт работает только через локальный сервер. Запустите
@@ -533,22 +586,6 @@ export function DonationAlertsPanel() {
                       : status.oauth.credentialStorage,
                   )}
                 </strong>
-              </div>
-              <div
-                className={`integration-auto-chat-card${status.autoChatEnabled ? ' enabled' : ''}`}
-              >
-                <div className="auto-chat-copy">
-                  <strong>Авто-Chat для новых донатов</strong>
-                  <span>
-                    Новые донаты DonationAlerts будут сохранены с включённым Chat.
-                  </span>
-                </div>
-                <ChatToggle
-                  checked={status.autoChatEnabled}
-                  label="Включить Авто-Chat для новых донатов DonationAlerts"
-                  onChange={(enabled) => void updateAutoChat(enabled)}
-                  compact
-                />
               </div>
               <div className="integration-reimport-card">
                 <div className="reimport-copy">
@@ -704,6 +741,8 @@ export function DonationAlertsPanel() {
             <p className="integration-error">{status.credentialError}</p>
           )}
           {error && <p className="integration-error">{error}</p>}
+            </div>
+          </section>
         </div>
       )}
 
@@ -726,6 +765,6 @@ export function DonationAlertsPanel() {
           onCancel={() => setReimportPreview(null)}
         />
       )}
-    </section>
+    </>
   )
 }

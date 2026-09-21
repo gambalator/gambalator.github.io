@@ -11,16 +11,16 @@ describe('ConfirmDialog', () => {
 
     render(
       <ConfirmDialog
-        title="Очистить все записи?"
-        message="История и настройки сохранятся."
-        confirmLabel="Очистить"
+        title="Удалить активные донаты?"
+        message="История розыгрышей и настройки сохранятся."
+        confirmLabel="Удалить"
         onConfirm={onConfirm}
         onCancel={onCancel}
       />,
     )
 
     expect(screen.getByRole('alertdialog')).toHaveClass('confirm-dialog')
-    await user.click(screen.getByRole('button', { name: 'Очистить' }))
+    await user.click(screen.getByRole('button', { name: 'Удалить' }))
     expect(onConfirm).toHaveBeenCalledOnce()
     expect(onCancel).not.toHaveBeenCalled()
   })

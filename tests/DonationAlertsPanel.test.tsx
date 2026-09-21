@@ -96,15 +96,19 @@ describe('DonationAlertsPanel', () => {
     const user = userEvent.setup()
     render(<DonationAlertsPanel />)
 
-    expect(await screen.findByText('Подключено')).toBeInTheDocument()
+    const trigger = await screen.findByRole('button', {
+      name: 'DonationAlerts: Подключено',
+    })
+    expect(trigger).toHaveClass('connected')
+    expect(trigger).toHaveTextContent('DonationAlerts')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    await user.click(trigger)
     const connectionMap = screen.getByLabelText('Состояние подключений')
     expect(within(connectionMap).getByText('Веб-страница')).toBeInTheDocument()
     expect(within(connectionMap).getByText('Локальный сервер')).toBeInTheDocument()
     expect(within(connectionMap).getByText('DonationAlerts')).toBeInTheDocument()
     expect(within(connectionMap).getByText('Связь есть')).toBeInTheDocument()
     expect(within(connectionMap).getByText('Синхронизация активна')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /DonationAlerts/ }))
-
     expect(screen.getByText('Ожидают импорта: 2')).toBeInTheDocument()
     expect(screen.getByText('системное хранилище')).toBeInTheDocument()
     expect(screen.queryByText(/API Key/)).not.toBeInTheDocument()
@@ -125,10 +129,9 @@ describe('DonationAlertsPanel', () => {
     const user = userEvent.setup()
     render(<DonationAlertsPanel />)
 
-    expect(await screen.findByText('Подключено')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /DonationAlerts/ }))
+    await screen.findByRole('button', { name: 'DonationAlerts: Подключено' })
     const toggle = screen.getByLabelText(
-      'Включить Авто-Chat для новых донатов DonationAlerts',
+      'Включить Chat all для новых донатов DonationAlerts',
     )
     expect(toggle).not.toBeChecked()
 
@@ -149,12 +152,14 @@ describe('DonationAlertsPanel', () => {
     const user = userEvent.setup()
     render(<DonationAlertsPanel />)
 
-    expect(await screen.findByText('Локальный сервер недоступен')).toBeInTheDocument()
+    const trigger = await screen.findByRole('button', {
+      name: 'DonationAlerts: Локальный сервер недоступен',
+    })
+    expect(trigger).toHaveClass('disconnected')
+    await user.click(trigger)
     const connectionMap = screen.getByLabelText('Состояние подключений')
     expect(within(connectionMap).getByText('Нет связи')).toBeInTheDocument()
     expect(within(connectionMap).getByText('Недоступно')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /DonationAlerts/ }))
-
     expect(screen.getByText(/mise run local/)).toBeInTheDocument()
   })
 
@@ -163,8 +168,9 @@ describe('DonationAlertsPanel', () => {
     const user = userEvent.setup()
     render(<DonationAlertsPanel />)
 
-    expect(await screen.findByText('Не подключено')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /DonationAlerts/ }))
+    await user.click(await screen.findByRole('button', {
+      name: 'DonationAlerts: Не подключено',
+    }))
 
     expect(screen.getByLabelText('App ID')).toBeInTheDocument()
     expect(screen.getByLabelText('API Key')).toBeInTheDocument()
@@ -178,8 +184,9 @@ describe('DonationAlertsPanel', () => {
     const user = userEvent.setup()
     render(<DonationAlertsPanel />)
 
-    expect(await screen.findByText('Не подключено')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /DonationAlerts/ }))
+    await user.click(await screen.findByRole('button', {
+      name: 'DonationAlerts: Не подключено',
+    }))
 
     const apiKeyInput = screen.getByLabelText('API Key')
     expect(apiKeyInput).toHaveValue('')
@@ -203,11 +210,11 @@ describe('DonationAlertsPanel', () => {
     const user = userEvent.setup()
     render(<DonationAlertsPanel />)
 
-    expect(
-      await screen.findByText('Требуется повторная авторизация'),
-    ).toBeInTheDocument()
+    await user.click(await screen.findByRole('button', {
+      name: 'DonationAlerts: Требуется повторная авторизация',
+    }))
+    expect(screen.getAllByText('Требуется повторная авторизация')).toHaveLength(2)
     expect(screen.getByText('Нужна авторизация')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /DonationAlerts/ }))
 
     await user.click(
       screen.getByRole('button', { name: 'ПЕРЕПОДКЛЮЧИТЬ DONATIONALERTS' }),
@@ -251,8 +258,9 @@ describe('DonationAlertsPanel', () => {
     const user = userEvent.setup()
     render(<DonationAlertsPanel />)
 
-    expect(await screen.findByText('Подключено')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /DonationAlerts/ }))
+    await user.click(await screen.findByRole('button', {
+      name: 'DonationAlerts: Подключено',
+    }))
     expect(screen.getByRole('button', { name: '3 ДНЯ' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '5 ДНЕЙ' })).toBeInTheDocument()
     const dateTrigger = screen.getByLabelText('Дата начала истории (МСК)')
@@ -325,8 +333,9 @@ describe('DonationAlertsPanel', () => {
     const user = userEvent.setup()
     render(<DonationAlertsPanel />)
 
-    expect(await screen.findByText('Подключено')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /DonationAlerts/ }))
+    await user.click(await screen.findByRole('button', {
+      name: 'DonationAlerts: Подключено',
+    }))
     await user.click(screen.getByRole('button', { name: 'ЗАГРУЗИТЬ ИСТОРИЮ' }))
 
     expect(

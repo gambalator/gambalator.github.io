@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { calculateRounds } from '../src/domain/calculateRounds'
 import { appReducer } from '../src/state'
 import {
   DEFAULT_STATE,
@@ -89,6 +90,152 @@ describe('appReducer entry order', () => {
     })
 
     expect(updated.entries.map((item) => item.id)).toEqual(['older', 'newer'])
+  })
+
+  it('accepts a complete active order so grouped entries can move as a block', () => {
+    const consumed: ContributionEntry = {
+      ...entry('used'),
+      status: 'consumed',
+      roundNumber: 1,
+      frozenRubTenths: 100,
+    }
+    const state = {
+      ...DEFAULT_STATE,
+      entries: [consumed, entry('a'), entry('b'), entry('c'), entry('d')],
+    }
+
+    const updated = appReducer(state, {
+      type: 'entries/reorder',
+      activeIds: ['a', 'd', 'b', 'c'],
+    })
+
+    expect(updated.entries.map((item) => item.id)).toEqual([
+      'used',
+      'a',
+      'd',
+      'b',
+      'c',
+    ])
+  })
+
+  it('uses a moved group block order for calculation without combining nicknames', () => {
+    const state = {
+      ...DEFAULT_STATE,
+      entries: [
+        { ...entry('alice'), nickname: 'Alice', amountTenths: 30_000 },
+        { ...entry('bob'), nickname: 'Bob', amountTenths: 20_000 },
+        { ...entry('carol'), nickname: 'Carol', amountTenths: 50_000 },
+      ],
+    }
+    const reordered = appReducer(state, {
+      type: 'entries/reorder',
+      activeIds: ['carol', 'alice', 'bob'],
+    })
+    let nextId = 0
+
+    const outcome = calculateRounds(
+      reordered.entries,
+      reordered.settings,
+      1,
+      () => `calculated-${++nextId}`,
+    )
+
+    expect(outcome.newResults.map((result) => result.winner)).toEqual([
+      'Carol',
+      'Alice',
+    ])
+  })
+
+  it('preserves Chat attribution when a Chat group block changes the closer', () => {
+    const state = {
+      ...DEFAULT_STATE,
+      entries: [
+        { ...entry('regular'), nickname: 'Regular', amountTenths: 49_000 },
+        {
+          ...entry('chat-1'),
+          nickname: 'Viewer one',
+          amountTenths: 500,
+          isChat: true,
+        },
+        {
+          ...entry('chat-2'),
+          nickname: 'Viewer two',
+          amountTenths: 500,
+          isChat: true,
+        },
+      ],
+    }
+    const reordered = appReducer(state, {
+      type: 'entries/reorder',
+      activeIds: ['chat-1', 'chat-2', 'regular'],
+    })
+    let nextId = 0
+
+    const outcome = calculateRounds(
+      reordered.entries,
+      reordered.settings,
+      1,
+      () => `calculated-${++nextId}`,
+    )
+
+    expect(outcome.newResults[0]).toMatchObject({
+      winner: 'Regular',
+      winningRubTenths: 49_000,
+      isChatWinner: false,
+    })
+  })
+
+  it('rejects an incomplete block order without losing active entries', () => {
+    const state = {
+      ...DEFAULT_STATE,
+      entries: [entry('a'), entry('b'), entry('c')],
+    }
+
+    const unchanged = appReducer(state, {
+      type: 'entries/reorder',
+      activeIds: ['a', 'b'],
+    })
+
+    expect(unchanged).toBe(state)
+  })
+
+  it('removes every active entry represented by a visual group', () => {
+    const state = {
+      ...DEFAULT_STATE,
+      entries: [entry('a'), entry('b'), entry('c')],
+    }
+
+    const updated = appReducer(state, {
+      type: 'entries/remove',
+      ids: ['a', 'b'],
+    })
+
+    expect(updated.entries.map((item) => item.id)).toEqual(['c'])
+  })
+
+  it('clears completed-round history without removing active donations', () => {
+    const active = entry('active')
+    const consumed = {
+      ...entry('consumed'),
+      status: 'consumed' as const,
+      roundNumber: 1,
+    }
+    const state = {
+      ...DEFAULT_STATE,
+      entries: [consumed, active],
+      history: [{
+        id: 'round-1',
+        roundNumber: 1,
+        winner: 'Winner',
+        winningRubTenths: 50_000,
+        targetRubTenths: 50_000,
+      }],
+    }
+
+    const updated = appReducer(state, { type: 'round-history/clear' })
+
+    expect(updated.entries).toEqual([active])
+    expect(updated.history).toEqual([])
   })
 
   it('imports external entries once and keeps chronological order', () => {

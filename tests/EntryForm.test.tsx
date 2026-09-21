@@ -1,23 +1,26 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { EntryForm } from '../src/components/EntryForm'
 
 describe('EntryForm', () => {
-  it('starts as one collapsed line and focuses nickname when opened', async () => {
+  it('starts as a plus button and focuses nickname when its dialog opens', async () => {
     const user = userEvent.setup()
     render(<EntryForm onAdd={vi.fn()} createId={() => 'entry-1'} />)
 
-    const toggle = screen.getByRole('button', { name: /Добавить донат вручную/ })
-    expect(toggle).toHaveAttribute('aria-expanded', 'false')
-    expect(toggle).not.toHaveTextContent('Никнейм')
-    expect(toggle).not.toHaveTextContent('Сумма')
+    const trigger = screen.getByRole('button', { name: /Добавить донат вручную/ })
+    expect(trigger).toHaveAttribute('aria-haspopup', 'dialog')
+    expect(trigger).toHaveTextContent('+')
     expect(screen.queryByLabelText('Никнейм')).not.toBeInTheDocument()
 
-    await user.click(toggle)
+    await user.click(trigger)
 
-    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('dialog', { name: 'Добавить донат вручную' })).toBeInTheDocument()
     expect(screen.getByLabelText('Никнейм')).toHaveFocus()
+
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    await waitFor(() => expect(trigger).toHaveFocus())
   })
 
   it('adds a trimmed entry and restores form defaults', async () => {

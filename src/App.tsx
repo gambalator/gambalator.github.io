@@ -9,11 +9,11 @@ import {
 import logoUrl from '../newbnny.png'
 import { APP_VERSION } from './version'
 import { EntryForm } from './components/EntryForm'
-import { EntryList, UsedEntries } from './components/EntryList'
+import { EntryList } from './components/EntryList'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { DonationAlertsPanel } from './components/DonationAlertsPanel'
 import { RoundHistory } from './components/RoundHistory'
-import { SettingsPanel } from './components/SettingsPanel'
+import { WorkspaceTools } from './components/WorkspaceTools'
 import { calculateRounds } from './domain/calculateRounds'
 import { formatTenths } from './domain/money'
 import { nextRoundNumber } from './domain/nextRoundNumber'
@@ -26,7 +26,7 @@ import { loadState, saveState } from './storage/localStorage'
 import { DEFAULT_STATE } from './types'
 
 type Feedback = { tone: 'success' | 'neutral' | 'error'; text: string }
-type Confirmation = 'clear-used' | 'clear-entries' | 'clear-history'
+type Confirmation = 'remove-active' | 'clear-active' | 'clear-history'
 
 const STATE_POLL_INTERVAL_MS = 1_000
 
@@ -40,6 +40,7 @@ export default function App() {
   const [backendMode, setBackendMode] = useState<boolean | null>(null)
   const [settingsDirty, setSettingsDirty] = useState(false)
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null)
+  const [pendingRemovalIds, setPendingRemovalIds] = useState<string[] | null>(null)
   const [feedback, setFeedback] = useState<Feedback | null>(null)
   const stateRef = useRef(state)
   const backendRevisionRef = useRef(0)
@@ -176,28 +177,49 @@ export default function App() {
   }
 
   const confirmPendingAction = async () => {
-    if (confirmation === 'clear-used') await applyAction({ type: 'used/clear' })
-    if (confirmation === 'clear-entries') await applyAction({ type: 'entries/clear' })
-    if (confirmation === 'clear-history') await applyAction({ type: 'history/clear' })
+    if (confirmation === 'remove-active' && pendingRemovalIds?.length) {
+      await applyAction({ type: 'entries/remove', ids: pendingRemovalIds })
+    }
+    if (confirmation === 'clear-active') {
+      const activeIds = state.entries
+        .filter((entry) => entry.status === 'active')
+        .map((entry) => entry.id)
+      if (activeIds.length > 0) {
+        await applyAction({ type: 'entries/remove', ids: activeIds })
+      }
+    }
+    if (confirmation === 'clear-history') {
+      await applyAction({ type: 'round-history/clear' })
+    }
     setConfirmation(null)
+    setPendingRemovalIds(null)
     setFeedback(null)
+  }
+
+  const cancelConfirmation = () => {
+    setConfirmation(null)
+    setPendingRemovalIds(null)
   }
 
   const confirmationCopy = confirmation
     ? {
-        'clear-used': {
-          title: 'Удалить использованные записи?',
-          message: 'История победителей и активные записи сохранятся.',
+        'remove-active': {
+          title: pendingRemovalIds && pendingRemovalIds.length > 1
+            ? 'Удалить активные донаты?'
+            : 'Удалить активный донат?',
+          message: pendingRemovalIds && pendingRemovalIds.length > 1
+            ? 'Будут удалены все донаты из выбранной группы. Это действие нельзя отменить.'
+            : 'Активный донат будет удалён. Это действие нельзя отменить.',
           confirmLabel: 'Удалить',
         },
-        'clear-entries': {
-          title: 'Очистить все записи?',
-          message: 'Активные и использованные записи будут удалены. История и настройки сохранятся.',
-          confirmLabel: 'Очистить',
+        'clear-active': {
+          title: 'Удалить активные донаты?',
+          message: 'Будут удалены только активные донаты. История розыгрышей и настройки сохранятся.',
+          confirmLabel: 'Удалить',
         },
         'clear-history': {
-          title: 'Очистить историю победителей?',
-          message: 'Записи и настройки останутся без изменений.',
+          title: 'Очистить историю розыгрышей?',
+          message: 'Результаты раундов и списки их участников будут удалены. Активные донаты и настройки сохранятся.',
           confirmLabel: 'Очистить',
         },
       }[confirmation]
@@ -206,7 +228,6 @@ export default function App() {
   const activeCount = state.entries.filter(
     (entry) => entry.status === 'active',
   ).length
-  const consumedCount = state.entries.length - activeCount
   return (
     <div className="app-shell">
       <header className="site-header">
@@ -217,18 +238,16 @@ export default function App() {
           <h1>
             Gambalator <span className="brand-version" aria-label={`Версия ${APP_VERSION}`}>{APP_VERSION}</span>
           </h1>
-          <p>Считаем вклад. Находим лидера.</p>
         </div>
         <div className="header-stats" aria-label="Краткая сводка">
-          <span>
-            Раунд <strong>{formatTenths(state.settings.roundTargetTenths)} ₽</strong>
-          </span>
-          <span>
-            Активных <strong>{activeCount}</strong>
-          </span>
-          <span>
-            Завершено <strong>{state.history.length}</strong>
-          </span>
+          <DonationAlertsPanel />
+          <WorkspaceTools
+            settings={state.settings}
+            onUpdateSettings={(settings) => {
+              void applyAction({ type: 'settings/update', settings })
+            }}
+            onDirtyChange={handleDirtyChange}
+          />
         </div>
       </header>
 
@@ -239,104 +258,84 @@ export default function App() {
           </div>
         )}
 
-        <DonationAlertsPanel />
+        <RoundHistory
+          history={state.history}
+          entries={state.entries}
+          settings={state.settings}
+          onClear={() => setConfirmation('clear-history')}
+        />
 
         <section className="panel contributions-panel" aria-label="Рабочая область донатов">
-          <EntryForm
-            createId={createId}
-            onAdd={(entry) => {
-              void applyAction({ type: 'entry/add', entry })
-              setFeedback(null)
-            }}
-          />
-
-          <div className="section-divider form-divider" aria-hidden="true" />
-
-          <div className="workspace-grid">
-            <div className="entries-column">
-              <EntryList
-                entries={state.entries}
-                settings={state.settings}
-                onUpdate={(entry) => void applyAction({ type: 'entry/update', entry })}
-                onRemove={(id) => void applyAction({ type: 'entry/remove', id })}
-                onReorder={(activeId, overId) =>
-                  void applyAction({ type: 'entry/reorder', activeId, overId })
-                }
-              />
-
-              <div className="section-divider entries-divider" aria-hidden="true" />
-
-              {feedback && (
-                <div className={`feedback ${feedback.tone}`} role="status">
-                  {feedback.text}
-                </div>
-              )}
-
-              <div className="calculation-actions">
-                <div className="calculate-buttons">
-                  <button
-                    className="button calculate-button"
-                    type="button"
-                    onClick={() => void calculate(null)}
-                    disabled={activeCount === 0 || settingsDirty || backendMode === null}
-                    title={
-                      settingsDirty
-                        ? 'Сначала сохраните изменения в настройках'
-                        : undefined
-                    }
-                  >
-                    РАССЧИТАТЬ ВСЕ
-                  </button>
-                  <button
-                    className="button secondary calculate-one-button"
-                    type="button"
-                    onClick={() => void calculate(1)}
-                    disabled={activeCount === 0 || settingsDirty || backendMode === null}
-                  >
-                    Рассчитать один
-                  </button>
-                </div>
-                <div className="secondary-actions">
-                  <button
-                    className="text-button"
-                    type="button"
-                    onClick={() => setConfirmation('clear-used')}
-                    disabled={consumedCount === 0}
-                  >
-                    Удалить использованные
-                  </button>
-                  <button
-                    className="text-button danger-text"
-                    type="button"
-                    onClick={() => setConfirmation('clear-entries')}
-                    disabled={state.entries.length === 0}
-                  >
-                    Очистить все записи
-                  </button>
-                </div>
-              </div>
-              <UsedEntries entries={state.entries} settings={state.settings} />
-            </div>
-
-            <RoundHistory
-              history={state.history}
-              onClear={() => setConfirmation('clear-history')}
+          <div className="entries-column">
+            <EntryList
+              entries={state.entries}
+              settings={state.settings}
+              persistenceReady={backendMode !== null}
+              onUpdate={(entry) => void applyAction({ type: 'entry/update', entry })}
+              onRemove={(idOrIds) => {
+                setPendingRemovalIds(
+                  Array.isArray(idOrIds) ? idOrIds : [idOrIds],
+                )
+                setConfirmation('remove-active')
+              }}
+              onReorder={(activeIds) =>
+                void applyAction({ type: 'entries/reorder', activeIds })
+              }
             />
+
+            <div className="section-divider entries-divider" aria-hidden="true" />
+
+            {feedback && (
+              <div className={`feedback ${feedback.tone}`} role="status">
+                {feedback.text}
+              </div>
+            )}
+
+            <div className="calculation-actions">
+              <div className="calculate-buttons">
+                <button
+                  className="button calculate-button"
+                  type="button"
+                  onClick={() => void calculate(1)}
+                  disabled={activeCount === 0 || settingsDirty || backendMode === null}
+                >
+                  Рассчитать один
+                </button>
+                <button
+                  className="button secondary calculate-one-button"
+                  type="button"
+                  onClick={() => void calculate(null)}
+                  disabled={activeCount === 0 || settingsDirty || backendMode === null}
+                  title={
+                    settingsDirty
+                      ? 'Сначала сохраните изменения в настройках'
+                      : undefined
+                  }
+                >
+                  Рассчитать все
+                </button>
+              </div>
+              <div className="secondary-actions">
+                <button
+                  className="text-button danger-text"
+                  type="button"
+                  onClick={() => setConfirmation('clear-active')}
+                  disabled={activeCount === 0}
+                >
+                  Удалить активные донаты
+                </button>
+              </div>
+              <EntryForm
+                createId={createId}
+                onAdd={(entry) => {
+                  void applyAction({ type: 'entry/add', entry })
+                  setFeedback(null)
+                }}
+              />
+            </div>
           </div>
         </section>
-
-        <SettingsPanel
-          settings={state.settings}
-          onUpdate={(settings) => {
-            void applyAction({ type: 'settings/update', settings })
-          }}
-          onDirtyChange={handleDirtyChange}
-        />
       </main>
-
-      <footer>
-        Gambalator <span>·</span> локальный расчёт без передачи данных
-      </footer>
 
       {confirmationCopy && (
         <ConfirmDialog
@@ -344,7 +343,7 @@ export default function App() {
           message={confirmationCopy.message}
           confirmLabel={confirmationCopy.confirmLabel}
           onConfirm={confirmPendingAction}
-          onCancel={() => setConfirmation(null)}
+          onCancel={cancelConfirmation}
         />
       )}
     </div>

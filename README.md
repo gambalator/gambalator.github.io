@@ -13,9 +13,13 @@ SQLite. No separately running frontend development server is needed for normal u
 ## Current features
 
 - Manual and automatic DonationAlerts donation entry.
-- Ordered active queue with newest-first visual presentation and oldest-first default
-  calculation order.
+- Ordered active queue with oldest-first visual presentation and calculation order by
+  default, plus an orange border around the exact entries needed for the next complete
+  round.
 - Drag-and-drop ordering, inline editing, row deletion, and one-decimal amounts.
+- Reversible manual and automatic visual grouping with editable names, expandable
+  source rows, block drag-and-drop, bulk removal, strict Chat/non-Chat separation, and
+  groups that remain after Auto is disabled or the page is reloaded.
 - `RUB`, `BRL`, `BYN`, `EUR`, `KZT`, `PLN`, `TRY`, `UAH`, `USD`, and `UZS` conversion using editable
   rates.
 - Separate actions for calculating one complete round or every currently available
@@ -25,10 +29,11 @@ SQLite. No separately running frontend development server is needed for normal u
   exact ties.
 - Per-row golden `Chat` attribution and a persisted backend Auto-Chat mode for newly
   received DonationAlerts donations.
-- Collapsible used-entry history grouped by round, with winners and Chat-attributed
-  rows highlighted.
-- Newest-first winner history, latest-result emphasis, and a wide popup for long
-  nicknames.
+- Merged round history: winner summaries open in a wide scrollable popup, and each
+  summary row unfolds the participant donations for that round with winner and Chat
+  attribution highlighted.
+- Last-winner details in the page summary, latest-result emphasis, wrapping for long
+  nicknames, and separate cleanup actions for active donations and completed history.
 - Confirmed historical download and restore from a Moscow date and 24-hour time,
   including `10 МИН`, `1 ЧАС`, `СЕГОДНЯ`, `3 ДНЯ`, and `5 ДНЕЙ` shortcuts.
 - Independent page-to-backend and backend-to-DonationAlerts connection indicators.
@@ -121,7 +126,7 @@ port.
 
 ## DonationAlerts setup
 
-1. Start the complete local application and expand the `DonationAlerts` panel.
+1. Start the complete local application and press the `DonationAlerts` status button in the header.
 2. Register an application at
    <https://www.donationalerts.com/application/clients>.
 3. Use the exact Redirect URI displayed by Gambalator. With the default port it is:
@@ -161,7 +166,7 @@ overrides, API routes, synchronization behavior, and backend-only development de
 
 ## Auto-Chat API
 
-The connected UI contains an `Авто-Chat для новых донатов` switch. Its state is stored
+The header contains a `Chat all` switch for new DonationAlerts donations. Its state is stored
 in SQLite and captured when the backend receives each new donation. Changing it does
 not rewrite donations already stored by the backend, and restored rows retain their
 original value. Previously unknown rows discovered by a historical scan are always
@@ -186,7 +191,7 @@ Use `{"enabled":false}` to disable it explicitly. On Windows PowerShell, use
 
 ## Historical download and restore
 
-The connected DonationAlerts panel can download account history back to a selected
+The DonationAlerts popup can download account history back to a selected
 Moscow date and time and restore known rows removed from calculator state. The flow:
 
 - scans DonationAlerts pages back to the selected timestamp before showing a preview;
@@ -217,6 +222,7 @@ live-donation cursor.
 |---|---|
 | Calculation settings, active and consumed entries, ordering, Chat flags, winner history (local mode) | SQLite in the OS application-data directory |
 | Static-build calculator state | Browser `localStorage`, key `gambalator:state` |
+| Visual groups, names, Auto state, and unmerge exclusions | Browser `localStorage`, key `gambalator:entry-list-grouping:v1` |
 | DonationAlerts cursor, normalized donations, pending/acknowledged state, Auto-Chat | The same SQLite database |
 | Earliest successfully scanned DonationAlerts history timestamp | The same SQLite database (`sync_state`) |
 | App ID, API Key, access token, refresh token | OS credential store when available; application-data file fallback |
@@ -243,6 +249,15 @@ Because normal state lives outside the source directory, a newly downloaded copy
 the same computer reuses it when started under the same OS user. Only the standalone
 static build has browser-profile-specific state.
 
+## Theme customization
+
+The beginning of `src/styles.css` contains a commented `EASY THEME SETTINGS` block.
+All literal color values live in that block; component rules reference its CSS custom
+properties. The main `--color-*` values change the shared palette, while searchable
+`--button-*` aliases are annotated with visible button names for non-programmer edits.
+`--font-weight-all` controls the weight of all project text from one line and defaults
+to `500`, matching the `АКТИВНЫЕ ЗАПИСИ` heading.
+
 ## Frontend development
 
 Run the Vite development server without starting the Python backend:
@@ -267,6 +282,15 @@ Useful tasks:
 | `mise run backend-dev` | Run the backend against the existing `dist/` without rebuilding it |
 | `mise run build-single` | Create a directly openable manual-only page |
 | `mise run check` | Run all frontend/backend checks and the production build |
+
+### Windows development mode with DonationAlerts
+
+Use `start-gambalator-dev.cmd` when working on the interface. It starts the normal
+DonationAlerts backend and a Vite development server together. Open
+`http://127.0.0.1:5173`; changes to frontend source files appear immediately through
+hot reload. Press `Ctrl+C` in its console window to stop both services.
+
+The regular `start-gambalator.cmd` remains the production-style launcher on port 5741.
 
 ## Standalone file
 

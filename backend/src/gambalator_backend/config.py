@@ -84,6 +84,7 @@ class Settings:
     max_pages_per_sync: int = 1000
     host: str = "127.0.0.1"
     port: int = 5741
+    frontend_url: str | None = None
 
     @property
     def database_path(self) -> Path:
@@ -127,4 +128,6 @@ class Settings:
             max_pages_per_sync=_positive_int("GAMBALATOR_MAX_PAGES_PER_SYNC", 1000),
             host=os.environ.get("GAMBALATOR_HOST", "127.0.0.1"),
             port=port,
+            frontend_url=os.environ.get("GAMBALATOR_FRONTEND_URL", "").strip().rstrip("/")
+            or None,
         )

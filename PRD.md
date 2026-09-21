@@ -46,16 +46,21 @@ overlay API, and calculation requests that do not require the page to remain ope
 
 ## 5. Page structure
 
-The page contains the DonationAlerts integration panel, the donation workspace, and
-the calculation settings panel.
+The page contains header controls for DonationAlerts and Chat-all attribution, a
+header `Меню` for consumed history and calculation settings, a winner-history
+launcher showing the latest result, and the donation workspace.
 
 The header uses the project artwork as its logo inside a prominent pink frame, preserving the rounded corners, slight tilt, and shadow.
+Keep the complete header compact, including the logo, brand copy, controls, summary
+chips, and spacing, so it leaves most of the viewport height to active donations.
 
 ### 5.1. Settings (`Настройки`)
 
-- The settings component is collapsed by default into one summary line showing the large `Параметры расчёта` title, round target, and both exchange rates. Do not show a separate `Настройки` heading.
-- Place the collapsed settings component last in the page's main content, after the donation workspace.
-- The summary line expands and collapses the settings controls.
+- Open calculation settings from header `Меню` → `Параметры расчёта`.
+- Show the settings controls directly in a wide, scrollable modal without an
+  additional collapsed summary step or a separate `Настройки` heading.
+- Closing the modal discards unsaved drafts and clears the calculation lock; explicitly
+  saved values remain applied.
 
 #### Round target
 
@@ -80,15 +85,18 @@ Use a compact, directly editable rate table rather than unlabeled standalone fie
 
 ### 5.2. Contributions and calculation
 
-This component contains the fast-entry form, contribution list, calculation controls, and result history.
+This component contains the fast-entry form, active contribution list, and calculation controls.
 
-Use centered, inset divider lines between the fast-entry form, active entries, calculation controls, and consumed-entry `ИСТОРИЯ`. Dividers must be visibly narrower than their containing content area.
+Use a centered, inset divider line between active entries and calculation controls.
+The divider must be visibly narrower than its containing content area.
 
 Do not show a visible `Очередь донатов` or separate `Взносы` heading. Do not show active or consumed counter pills above the workspace.
 
 #### Fast-entry form
 
-The manual-entry section is collapsed by default into one line labelled `ДОБАВИТЬ ДОНАТ ВРУЧНУЮ`, without a field-name summary. Expanding it reveals the complete form; after a successful addition it stays open and focuses the nickname field for the next entry.
+Place a compact `+` button at the far right of the calculation-action row. It opens
+the complete manual-entry form in a modal. After a successful addition the modal stays
+open and focuses the nickname field for the next entry.
 
 Fields, in order:
 
@@ -100,7 +108,8 @@ Fields, in order:
 
 Pressing Enter from the form has the same effect as pressing `ДОБАВИТЬ`. After a successful addition, the inputs clear, currency returns to `RUB`, and the `Chat` toggle returns to its disabled default; keyboard focus returns to the nickname field.
 
-New donations are stored in chronological order for calculation, but the active queue is rendered in reverse chronological order. For entries added as `1, 2, 3, 4`, the visible list and its labels are `4, 3, 2, 1`. Round calculation continues to process the canonical chronological order `1, 2, 3, 4`, independent of the reversed presentation.
+New donations are stored and displayed oldest-first by default. The icon-only display
+order control may reverse presentation without changing canonical calculation order.
 
 Field labels and empty-list guidance use comfortably large desktop text.
 
@@ -118,23 +127,59 @@ Each row shows:
 Active rows:
 
 - Use the normal foreground and background colors.
+- Show the combined active value in RUB beside the `Активные записи` title instead
+  of the number of rows, using frozen amounts and current conversion rates as
+  appropriate. Follow it with a separator and the number of complete rounds currently
+  available; center the combined summary, keeping the sum yellow, separator grey,
+  and round count pink.
 - Use large, prominent nickname and amount text and show a visible sequence number.
 - Have a small vertical gap between adjacent rows.
 - Give every row its own golden `Chat` toggle. When enabled, calculate that donation under the shared `Chat` nickname while retaining the typed nickname for identification and later editing.
 - Give Chat-attributed rows a visible golden highlight.
+- Give the canonical entries that would be consumed, in whole or in part, by the next
+  complete round a distinct orange border. Include the entry that crosses the round
+  boundary, show no such border when a complete round is unavailable, and keep this
+  indicator independent of the presentation-only display direction.
 - Can be edited inline, reordered via drag-and-drop, toggled between individual and Chat attribution, or removed.
 - May only be reordered within the active part of the list.
+- Scroll inside a bounded-height list when there are many active donations.
+- Display active donations oldest-first by default. Offer a newest-first/oldest-first
+  display switch that changes only presentation; show only its order icon and expose
+  its action through an accessible label and tooltip. Toggling it must not change
+  canonical queue or calculation order.
+- Let the operator manually merge adjacent donations with different nicknames, provided
+  they all share the same Chat attribution state. Never allow regular and Chat-attributed
+  donations in one group. Prefill the editable group name from the first selected regular
+  donation; force the name `Chat` for an all-Chat group.
+- Render a group like an active donation: one visible sequence number, a drag handle,
+  editable visual name, combined RUB sum, compact row actions, and no large text action.
+  Expanding it reveals every original donation with its position, nickname, amount, and
+  attribution. Do not give groups a generic pink highlight. Give a collapsed group the
+  next-round border when any member contributes, and mark the exact contributors when
+  expanded. Keep a compact unmerge action, and let deletion remove every source entry in
+  the group transactionally.
+- Offer optional automatic visual merging for every uninterrupted run of matching
+  nicknames and every uninterrupted run of Chat-attributed donations. A different
+  donation between matching rows is a gap and prevents merging across it. Turning Auto
+  off stops automatic creation or extension but keeps all groups already produced.
+- Creating, naming, expanding, and unmerging a group are presentation-only and retain
+  every source entry. Dragging a group intentionally moves all member entries as one
+  contiguous block in canonical calculation order; deleting it removes all member rows.
+- Persist the Auto toggle, materialized visual groups, custom group names, and explicit
+  Auto-unmerge exclusions in versioned browser storage. Restore them after refresh and
+  validate all saved member IDs against the current active queue before rendering.
 
 Consumed rows:
 
 - Use a visibly pale style while retaining readable contrast.
 - Do not show a visible `Использовано` status word inside each row; use larger nickname, amount, and round text instead.
 - Are locked: they cannot be edited, reordered, or individually removed.
-- Appear below the active rows, grouped by decreasing `Гамбашар` number so the newest group is first; rows within each group retain their historical processing order.
-- Appear below the calculation and cleanup buttons.
-- Are collapsed by default into a single `ИСТОРИЯ` title line and can be expanded or collapsed by the user. Its counter shows the number of `Гамбашар` groups, not the number of consumed donation rows.
-- Show a visible sequence number when expanded.
-- Group expanded entries into visually distinct `Гамбашар` sections so nicknames from different rounds are clearly separated.
+- Appear beneath their round's winner-summary row in the merged winner-history modal;
+  rows within each round retain their historical processing order.
+- Stay folded by default and unfold when the user clicks the corresponding round row.
+- Use a bounded modal so a long consumed history does not make the page excessively tall.
+- Show a visible sequence number in the history modal.
+- Group entries into visually distinct `Гамбашар` sections so nicknames from different rounds are clearly separated.
 - Separate adjacent nickname rows within each `Гамбашар` section with a thin line.
 - Mark donations that were attributed to `Chat` when calculated with a persistent golden `Chat` badge and subtle golden row highlight.
 - Highlight the nickname whose aggregated contribution won each group; highlight every tied winner, and the `Chat` attribution marker when Chat won.
@@ -142,29 +187,42 @@ Consumed rows:
 
 Controls below or beside the list:
 
-- `РАССЧИТАТЬ ВСЕ` — process all complete rounds currently available using a large,
+- `Рассчитать все` — process all complete rounds currently available using a large,
   prominent pink label.
 - `Рассчитать один` — process no more than one complete round using the yellow
   secondary action.
-- `Удалить использованные` — remove all pale consumed rows after confirmation; result history remains.
-- `Очистить все записи` — remove all active and consumed contribution rows after confirmation; result history and settings remain.
+- `Удалить активные донаты` — remove only active contribution rows after confirmation;
+  completed-round results, their participant rows, and settings remain.
 
 #### Result history
 
 The section title is `История победителей`.
 
+Place this section where the old inline DonationAlerts panel appeared. Show the last
+winner's name and winning RUB sum centered in the summary with a `|` separator.
+Clicking anywhere on the summary opens the scrollable wide modal directly; there is no
+inline expand/collapse mode. Place `Очистить историю` inside the modal, not in the
+summary header.
+
 Show one immutable result item per completed round in decreasing round order, with the newest result first:
 
 - Each item uses large winner-name text and does not show a separate line-number badge.
 - Render every round result as a visually separate row or card.
-- Place `Гамбашар N` on its own subtitle line above the result row, leaving the row width for the winner nickname and amount. Allow long winner nicknames to wrap instead of hiding them.
+- Place `Гамбашар N`, the winner nickname, and amount on one row in the modal, keeping
+  the winner information centered. Allow long winner nicknames to wrap instead of
+  hiding them.
+- Clicking a result row unfolds every consumed participant donation for that round;
+  clicking it again folds those rows.
 - After a successful calculation, newly produced winners remain bright while all winners from earlier calculations become pale. A calculation that completes no rounds does not change history emphasis.
 
 - `Гамбашар 1 — Chel_1 — 3000.0 RUB`
 - `Гамбашар 2 — Chel_4 — 4000.0 RUB`
 - For a tie: `Гамбашар 3 — Chel_2, Chel_3 — 2000.0 RUB`
 
-Repeated winners appear once for every round they win. The control `Очистить историю` removes all winner result items after confirmation but does not modify entries or settings. The next round number continues after the highest round still present in either winner history or consumed-entry `ИСТОРИЯ`; numbering restarts at 1 only when both are empty.
+Repeated winners appear once for every round they win. The control `Очистить историю`
+removes winner results and their consumed participant rows together after confirmation,
+but does not modify active entries or settings. The next round number restarts at 1
+after this merged history is empty.
 
 The `Очистить историю` control uses the same readable text scale as the other list actions.
 
@@ -273,8 +331,13 @@ Expected results:
 
 - Optimize the layout for desktop widths; mobile optimization is not required in version 1.
 - Keep the dark interface theme and use soft pink (`#FA75DB`) as the primary product color, with yellow and orange as secondary accents.
+- Keep every editable color literal in the commented theme block at the beginning of
+  `src/styles.css`. Component rules reference descriptive custom properties; aliases
+  for buttons include their visible names so a non-programmer can locate them by text.
+- Use one `--font-weight-all` custom property for all visible text. Its default is
+  `500`, matching the `АКТИВНЫЕ ЗАПИСИ` heading.
 - Maintain clear visual separation between `Настройки` and `Взносы`.
-- Keep the primary `РАССЧИТАТЬ ВСЕ` action visually prominent; keep
+- Keep the primary `Рассчитать все` action visually prominent; keep
   `Рассчитать один` as the yellow secondary action.
 - Do not communicate consumed status through color alone; include a text label or status icon with an accessible name.
 - All controls must be keyboard reachable and have visible focus states.
@@ -319,14 +382,18 @@ Expected results:
 
 - Use Python 3.13, Flask, Waitress, Requests, and SQLite in an independent `backend` project.
 - Poll the official `GET /api/v1/alerts/donations` endpoint with an OAuth token carrying the `oauth-donation-index` scope.
-- Provide a collapsed Russian-language DonationAlerts panel that shows connection state and the exact loopback Redirect URI.
+- Provide a compact red/green DonationAlerts status button in the header. Open a
+  modal from it for connection details, setup, history download, and other actions;
+  show the exact loopback Redirect URI there.
 - Accept the application's App ID and API Key locally, open the DonationAlerts authorization page, validate the returned OAuth state, and exchange the temporary code through the Python service.
 - Prefer the operating system's credential store for API Key, access token, and refresh token; clearly report when an unencrypted local-file fallback is used.
 - Refresh expired access tokens without requiring the operator to repeat authorization.
 - When DonationAlerts rejects an expired or revoked refresh token, distinguish it from a temporary connection failure and show `Требуется повторная авторизация`.
 - Let the operator restart authorization with one button while reusing the locally saved App ID and API Key; do not redirect to DonationAlerts automatically at startup.
 - After manual disconnection, represent a saved API Key with a masked placeholder and explanatory text without returning the secret to the browser.
-- Provide an `Авто-Chat для новых донатов` toggle, disabled by default. Capture its state when the backend receives each new donation and import enabled donations with their row-level golden `Chat` toggle on.
+- Provide a `Chat all` toggle beside the round summary in the header, disabled by
+  default. Capture its state when the backend receives each new donation and import
+  enabled donations with their row-level golden `Chat` toggle on.
 - Persist automatic Chat attribution in SQLite, retain the captured value through
   delayed import and restore, and do not change donations already received when the
   global toggle changes. Newly discovered historical rows are always regular and no
@@ -358,7 +425,8 @@ Expected results:
 - Keep a visible `Веб-страница → Локальный сервер → DonationAlerts` connection map with an independent status for each link, including synchronization errors.
 - Display healthy connection labels and their status dots in green.
 - Hide a successful historical-import completion notice automatically after five seconds.
-- Allow the winner history to open from an icon-only expand button into a wide modal where long and tied winner names wrap without truncation.
+- Open winner history by clicking its complete summary row; use a wide modal where
+  long and tied winner names wrap without truncation.
 - In the Only_DA-Goal companion, keep legacy F20/F21/F22 behavior and use separate F6
   and F7 bindings for one round and all available rounds. Keep successful overlay
   polling quiet while retaining HTTP errors such as 503 in the console.
@@ -392,11 +460,12 @@ The first version is acceptable when all of the following are true:
 11. An incomplete final round produces no result and its unconsumed entries or portions remain active.
 12. Changing the target or rates does not modify historical results or consumed rows.
 13. Refreshing the page restores all saved settings, entries, ordering, statuses, source references, and results.
-14. `Удалить использованные`, `Очистить историю`, and `Очистить все записи` perform only their documented scopes and request confirmation.
+14. `Очистить историю` and `Удалить активные донаты` perform only their documented
+    scopes and request confirmation.
 15. All user-facing text is Russian and the application deploys successfully to GitHub Pages.
 16. In local mode, manual and DonationAlerts entries persist in SQLite and continue to
     update without an open browser page.
-17. `РАССЧИТАТЬ ВСЕ` completes every available round, while `Рассчитать один` and the
+17. `Рассчитать все` completes every available round, while `Рассчитать один` and the
     corresponding API action complete no more than one.
 18. The OBS overlay reads the same active total and target that the calculator uses and
     reflects the amount consumed by either calculation action.

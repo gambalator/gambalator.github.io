@@ -14,6 +14,7 @@ interface SettingsPanelProps {
   settings: Settings
   onUpdate: (settings: Settings) => void
   onDirtyChange: (dirty: boolean) => void
+  displayMode?: 'collapsible' | 'dialog'
 }
 
 type RateDrafts = Record<RateSetting, string>
@@ -36,6 +37,7 @@ export function SettingsPanel({
   settings,
   onUpdate,
   onDirtyChange,
+  displayMode = 'collapsible',
 }: SettingsPanelProps) {
   const [expanded, setExpanded] = useState(false)
   const [allCurrenciesExpanded, setAllCurrenciesExpanded] = useState(false)
@@ -64,6 +66,10 @@ export function SettingsPanel({
   }, [rateDrafts, roundDraft, settings])
 
   useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange])
+  useEffect(() => () => onDirtyChange(false), [onDirtyChange])
+
+  const dialogMode = displayMode === 'dialog'
+  const contentVisible = dialogMode || expanded
 
   const saveRoundTarget = () => {
     const nextTarget = parseTenths(roundDraft)
@@ -147,34 +153,43 @@ export function SettingsPanel({
 
   return (
     <section
-      className={`panel settings-panel${expanded ? ' expanded' : ''}`}
-      aria-labelledby="settings-title"
+      className={`panel settings-panel${contentVisible ? ' expanded' : ''}${dialogMode ? ' settings-panel-dialog' : ''}`}
+      aria-label={dialogMode ? 'Параметры расчёта' : undefined}
+      aria-labelledby={dialogMode ? undefined : 'settings-title'}
     >
-      <button
-        className="settings-toggle"
-        type="button"
-        aria-expanded={expanded}
-        aria-controls="settings-content"
-        onClick={() => setExpanded((value) => !value)}
-      >
-        <span className="settings-toggle-title">
-          <span className="settings-component-title" id="settings-title">
-            Параметры расчёта
+      {!dialogMode && (
+        <button
+          className="settings-toggle"
+          type="button"
+          aria-expanded={expanded}
+          aria-controls="settings-content"
+          onClick={() => setExpanded((value) => !value)}
+        >
+          <span className="settings-toggle-title">
+            <span className="settings-component-title" id="settings-title">
+              Параметры расчёта
+            </span>
           </span>
-        </span>
-        <span className="settings-summary">
-          Раунд {formatTenths(settings.roundTargetTenths)} RUB
-          <span aria-hidden="true">·</span>
-          EUR {formatTenths(settings.eurRateTenths)}
-          <span aria-hidden="true">·</span>
-          USD {formatTenths(settings.usdRateTenths)}
-        </span>
-        {dirty && <span className="dirty-badge">Не сохранено</span>}
-        <span className="toggle-label">{expanded ? 'Свернуть' : 'Развернуть'}</span>
-        <span className={`chevron${expanded ? ' open' : ''}`} aria-hidden="true">⌄</span>
-      </button>
+          <span className="settings-summary">
+            Раунд {formatTenths(settings.roundTargetTenths)} RUB
+            <span aria-hidden="true">·</span>
+            EUR {formatTenths(settings.eurRateTenths)}
+            <span aria-hidden="true">·</span>
+            USD {formatTenths(settings.usdRateTenths)}
+          </span>
+          {dirty && <span className="dirty-badge">Не сохранено</span>}
+          <span className="toggle-label">{expanded ? 'Свернуть' : 'Развернуть'}</span>
+          <span className={`chevron${expanded ? ' open' : ''}`} aria-hidden="true" />
+        </button>
+      )}
 
-      {expanded && <div className="settings-grid" id="settings-content">
+      {dialogMode && dirty && (
+        <div className="settings-dialog-status">
+          <span className="dirty-badge">Не сохранено</span>
+        </div>
+      )}
+
+      {contentVisible && <div className="settings-grid" id="settings-content">
         <div className="setting-card target-card">
           <div className="target-current-row">
             <p className="setting-label">Текущая сумма раунда</p>
@@ -196,7 +211,7 @@ export function SettingsPanel({
                 />
                 <span>RUB</span>
               </div>
-              <button className="button secondary" type="button" onClick={saveRoundTarget}>
+              <button className="button secondary round-save-button" type="button" onClick={saveRoundTarget}>
                 Обновить
               </button>
             </div>
@@ -224,7 +239,7 @@ export function SettingsPanel({
               <span
                 className={`chevron${allCurrenciesExpanded ? ' open' : ''}`}
                 aria-hidden="true"
-              >⌄</span>
+              />
             </button>
             {allCurrenciesExpanded && (
               <div className="rate-list additional-rate-list">

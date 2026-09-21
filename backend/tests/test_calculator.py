@@ -1,4 +1,6 @@
-from gambalator_backend.calculator import CalculatorService
+import pytest
+
+from gambalator_backend.calculator import CalculatorError, CalculatorService
 from gambalator_backend.database import Database, Donation
 
 
@@ -21,6 +23,124 @@ def active_entry(
     if is_chat:
         entry["isChat"] = True
     return entry
+
+
+def test_reorders_a_complete_active_list_for_group_block_moves(tmp_path):
+    calculator, _database = build_calculator(tmp_path)
+    for entry in [
+        active_entry("a", "A", 100),
+        active_entry("b", "B", 100),
+        active_entry("c", "C", 100),
+        active_entry("d", "D", 100),
+    ]:
+        calculator.apply_action({"type": "entry/add", "entry": entry})
+
+    result = calculator.apply_action(
+        {
+            "type": "entries/reorder",
+            "activeIds": ["a", "d", "b", "c"],
+        }
+    )
+
+    assert [item["id"] for item in result.state["entries"]] == ["a", "d", "b", "c"]
+
+    removed = calculator.apply_action(
+        {"type": "entries/remove", "ids": ["b", "c"]}
+    )
+
+    assert [item["id"] for item in removed.state["entries"]] == ["a", "d"]
+
+
+def test_reorder_rejects_a_stale_incomplete_active_list_without_data_loss(tmp_path):
+    calculator, _database = build_calculator(tmp_path)
+    for entry in [
+        active_entry("a", "A", 100),
+        active_entry("b", "B", 100),
+        active_entry("new", "New donation", 100),
+    ]:
+        calculator.apply_action({"type": "entry/add", "entry": entry})
+
+    with pytest.raises(CalculatorError, match="every active entry exactly once"):
+        calculator.apply_action(
+            {"type": "entries/reorder", "activeIds": ["a", "b"]}
+        )
+
+    assert [item["id"] for item in calculator.get_state().state["entries"]] == [
+        "a",
+        "b",
+        "new",
+    ]
+
+
+def test_round_history_clear_keeps_active_donations(tmp_path):
+    calculator, _database = build_calculator(tmp_path)
+    calculator.apply_action(
+        {"type": "entry/add", "entry": active_entry("used", "Winner", 50_000)}
+    )
+    calculator.calculate_one_round()
+    calculator.apply_action(
+        {"type": "entry/add", "entry": active_entry("active", "Next", 1_000)}
+    )
+
+    result = calculator.apply_action({"type": "round-history/clear"})
+
+    assert [item["id"] for item in result.state["entries"]] == ["active"]
+    assert result.state["history"] == []
+
+
+def test_group_block_order_drives_round_winners_without_merging_nicknames(tmp_path):
+    calculator, _database = build_calculator(tmp_path)
+    for entry in [
+        active_entry("alice", "Alice", 30_000),
+        active_entry("bob", "Bob", 20_000),
+        active_entry("carol", "Carol", 50_000),
+    ]:
+        calculator.apply_action({"type": "entry/add", "entry": entry})
+
+    calculator.apply_action(
+        {
+            "type": "entries/reorder",
+            "activeIds": ["carol", "alice", "bob"],
+        }
+    )
+    result = calculator.apply_action(
+        {"type": "calculation/run", "maxRounds": None}
+    )
+
+    assert [item["winner"] for item in result.state["history"]] == [
+        "Carol",
+        "Alice",
+    ]
+
+
+def test_reordered_chat_group_keeps_each_member_attributed_to_chat(tmp_path):
+    calculator, _database = build_calculator(tmp_path)
+    for entry in [
+        active_entry("regular", "Regular", 49_000),
+        active_entry("chat-1", "Viewer one", 500, is_chat=True),
+        active_entry("chat-2", "Viewer two", 500, is_chat=True),
+    ]:
+        calculator.apply_action({"type": "entry/add", "entry": entry})
+
+    calculator.apply_action(
+        {
+            "type": "entries/reorder",
+            "activeIds": ["chat-1", "chat-2", "regular"],
+        }
+    )
+    result = calculator.apply_action(
+        {"type": "calculation/run", "maxRounds": None}
+    )
+
+    assert result.state["history"][-1] | {"id": "ignored"} == {
+        "id": "ignored",
+        "roundNumber": 1,
+        "targetRubTenths": 50_000,
+        "winner": "Regular",
+        "winningRubTenths": 49_000,
+        "isChatWinner": False,
+        "isLatest": True,
+    }
 
 
 def test_calculate_one_round_leaves_the_second_round_active(tmp_path):

@@ -1,11 +1,50 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { EntryList, UsedEntries } from '../src/components/EntryList'
 import { SettingsPanel } from '../src/components/SettingsPanel'
+import { calculateRounds } from '../src/domain/calculateRounds'
+import { activeIdsAfterDisplayMove } from '../src/domain/displayGroups'
 import { DEFAULT_SETTINGS, type ContributionEntry } from '../src/types'
 
 describe('collapsible sections', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    localStorage.setItem('gambalator:entry-list-grouping:v1', JSON.stringify({
+      version: 1,
+      autoMerge: false,
+      groups: [],
+      exclusions: [],
+    }))
+  })
+
+  it('keeps every group member contiguous when moving display blocks', () => {
+    const newestFirstBlocks = [
+      { id: 'd', entryIds: ['d'] },
+      { id: 'group', entryIds: ['b', 'c'] },
+      { id: 'a', entryIds: ['a'] },
+    ]
+
+    expect(activeIdsAfterDisplayMove(
+      newestFirstBlocks,
+      'group',
+      'd',
+      true,
+    )).toEqual(['a', 'd', 'b', 'c'])
+    expect(activeIdsAfterDisplayMove(
+      newestFirstBlocks,
+      'group',
+      'a',
+      true,
+    )).toEqual(['b', 'c', 'a', 'd'])
+    expect(activeIdsAfterDisplayMove(
+      [...newestFirstBlocks].reverse(),
+      'group',
+      'd',
+      false,
+    )).toEqual(['a', 'd', 'b', 'c'])
+  })
+
   it('keeps settings on one collapsed summary line by default', async () => {
     const user = userEvent.setup()
     render(
@@ -174,7 +213,8 @@ describe('collapsible sections', () => {
       </>,
     )
 
-    const activeTitle = screen.getByText('Активные записи')
+    const activeTitle = document.querySelector('.active-total')
+    if (!activeTitle) throw new Error('Expected active donation summary')
     const usedToggle = screen.getByRole('button', {
       name: /ИСТОРИЯ/,
     })
@@ -189,7 +229,9 @@ describe('collapsible sections', () => {
     expect(screen.getByText('UsedNick')).toBeInTheDocument()
   })
 
-  it('renders active entries and their numbers in reverse order', () => {
+  it('switches the visual active-entry order without requesting a queue reorder', async () => {
+    const user = userEvent.setup()
+    const onReorder = vi.fn()
     const entries: ContributionEntry[] = [
       {
         id: 'older',
@@ -213,18 +255,878 @@ describe('collapsible sections', () => {
         settings={DEFAULT_SETTINGS}
         onUpdate={vi.fn()}
         onRemove={vi.fn()}
+        onReorder={onReorder}
+      />,
+    )
+
+    const older = screen.getByText('Older').closest('.entry-row')
+    const newer = screen.getByText('Newer').closest('.entry-row')
+    if (!older || !newer) throw new Error('Expected both active rows')
+    expect(
+      older.compareDocumentPosition(newer) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    expect(older.querySelector('.row-index')).toHaveTextContent('1')
+    expect(newer.querySelector('.row-index')).toHaveTextContent('2')
+    expect(document.querySelector('.active-total')).toHaveTextContent(
+      '30.0 RUB0 гамбашаров',
+    )
+
+    await user.click(screen.getByRole('button', { name: /Показать сначала новые/ }))
+
+    const newerFirst = screen.getByText('Newer').closest('.entry-row')
+    const olderSecond = screen.getByText('Older').closest('.entry-row')
+    if (!newerFirst || !olderSecond) throw new Error('Expected both reordered rows')
+    expect(
+      newerFirst.compareDocumentPosition(olderSecond) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    expect(newerFirst.querySelector('.row-index')).toHaveTextContent('2')
+    expect(olderSecond.querySelector('.row-index')).toHaveTextContent('1')
+    expect(screen.getByRole('button', { name: /Показать сначала старые/ })).toBeInTheDocument()
+    expect(onReorder).not.toHaveBeenCalled()
+  })
+
+  it('marks only the canonical entries needed to complete the next round', async () => {
+    const user = userEvent.setup()
+    const entries: ContributionEntry[] = [
+      {
+        id: 'first',
+        nickname: 'First',
+        amountTenths: 30_000,
+        currency: 'RUB',
+        status: 'active',
+      },
+      {
+        id: 'boundary',
+        nickname: 'Boundary',
+        amountTenths: 25_000,
+        currency: 'RUB',
+        status: 'active',
+      },
+      {
+        id: 'later',
+        nickname: 'Later',
+        amountTenths: 10_000,
+        currency: 'RUB',
+        status: 'active',
+      },
+    ]
+    const props = {
+      entries,
+      onUpdate: vi.fn(),
+      onRemove: vi.fn(),
+      onReorder: vi.fn(),
+    }
+    const { rerender } = render(
+      <EntryList settings={DEFAULT_SETTINGS} {...props} />,
+    )
+
+    expect(screen.getByText('First').closest('.entry-row'))
+      .toHaveClass('next-round-entry')
+    expect(screen.getByText('Boundary').closest('.entry-row'))
+      .toHaveClass('next-round-entry')
+    expect(screen.getByText('Later').closest('.entry-row'))
+      .not.toHaveClass('next-round-entry')
+    const nextRoundGroup = document.querySelector('.next-round-group')
+    expect(nextRoundGroup).toContainElement(screen.getByText('First'))
+    expect(nextRoundGroup).toContainElement(screen.getByText('Boundary'))
+    expect(nextRoundGroup).not.toContainElement(screen.getByText('Later'))
+
+    await user.click(screen.getByRole('button', { name: /Показать сначала новые/ }))
+
+    expect(screen.getByText('First').closest('.entry-row'))
+      .toHaveClass('next-round-entry')
+    expect(screen.getByText('Boundary').closest('.entry-row'))
+      .toHaveClass('next-round-entry')
+    expect(screen.getByText('Later').closest('.entry-row'))
+      .not.toHaveClass('next-round-entry')
+
+    rerender(
+      <EntryList
+        settings={{ ...DEFAULT_SETTINGS, roundTargetTenths: 70_000 }}
+        {...props}
+      />,
+    )
+
+    expect(document.querySelector('.next-round-entry')).not.toBeInTheDocument()
+    expect(document.querySelector('.next-round-group')).not.toBeInTheDocument()
+  })
+
+  it('marks a group and only its contributing expanded donations', async () => {
+    const user = userEvent.setup()
+    const entries: ContributionEntry[] = [
+      {
+        id: 'group-first',
+        nickname: 'First',
+        amountTenths: 30_000,
+        currency: 'RUB',
+        status: 'active',
+      },
+      {
+        id: 'group-boundary',
+        nickname: 'Boundary',
+        amountTenths: 25_000,
+        currency: 'RUB',
+        status: 'active',
+      },
+      {
+        id: 'group-later',
+        nickname: 'Later',
+        amountTenths: 10_000,
+        currency: 'RUB',
+        status: 'active',
+      },
+    ]
+
+    render(
+      <EntryList
+        entries={entries}
+        settings={DEFAULT_SETTINGS}
+        onUpdate={vi.fn()}
+        onRemove={vi.fn()}
         onReorder={vi.fn()}
       />,
     )
 
-    const newer = screen.getByText('Newer').closest('.entry-row')
-    const older = screen.getByText('Older').closest('.entry-row')
-    if (!newer || !older) throw new Error('Expected both active rows')
-    expect(
-      newer.compareDocumentPosition(older) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy()
-    expect(newer.querySelector('.row-index')).toHaveTextContent('2')
-    expect(older.querySelector('.row-index')).toHaveTextContent('1')
+    await user.click(screen.getByRole('button', { name: 'Объединить' }))
+    for (const entry of entries) {
+      await user.click(screen.getByLabelText(
+        `Выбрать донат ${entry.nickname} для объединения`,
+      ))
+    }
+    await user.click(screen.getByRole('button', { name: 'Объединить выбранные' }))
+
+    expect(document.querySelector('.merged-row')).toHaveClass('next-round-entry')
+    await user.click(screen.getByRole('button', { name: 'Раскрыть группу First' }))
+
+    expect(document.querySelector('.merged-row')).not.toHaveClass('next-round-entry')
+    const groupedRows = [...document.querySelectorAll('.grouped-donation-row')]
+    expect(groupedRows).toHaveLength(3)
+    expect(groupedRows[0]).toHaveClass('next-round-entry')
+    expect(groupedRows[1]).toHaveClass('next-round-entry')
+    expect(groupedRows[2]).not.toHaveClass('next-round-entry')
+  })
+
+  it('manually groups adjacent compatible donations without changing entry data', async () => {
+    const user = userEvent.setup()
+    const onUpdate = vi.fn()
+    const onRemove = vi.fn()
+    const onReorder = vi.fn()
+    const entries: ContributionEntry[] = [
+      {
+        id: 'alice-1',
+        nickname: 'Alice',
+        amountTenths: 100,
+        currency: 'RUB',
+        status: 'active',
+      },
+      {
+        id: 'alice-2',
+        nickname: 'Alice',
+        amountTenths: 200,
+        currency: 'RUB',
+        status: 'active',
+      },
+    ]
+
+    render(
+      <EntryList
+        entries={entries}
+        settings={DEFAULT_SETTINGS}
+        onUpdate={onUpdate}
+        onRemove={onRemove}
+        onReorder={onReorder}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Объединить' }))
+    const checkboxes = screen.getAllByLabelText(
+      'Выбрать донат Alice для объединения',
+    )
+    await user.click(checkboxes[0]!)
+    await user.click(checkboxes[1]!)
+    await user.click(screen.getByRole('button', { name: 'Объединить выбранные' }))
+
+    const group = document.querySelector('.merged-row')
+    expect(group).toHaveTextContent('Alice')
+    expect(group).toHaveTextContent('2 доната')
+    expect(group).toHaveTextContent('30.0 RUB')
+    expect(group).toHaveTextContent('Объединённая группа')
+    expect(onUpdate).not.toHaveBeenCalled()
+    expect(onRemove).not.toHaveBeenCalled()
+    expect(onReorder).not.toHaveBeenCalled()
+
+    const expandGroup = screen.getByRole('button', { name: 'Раскрыть группу Alice' })
+    expect(expandGroup).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByLabelText('Донаты группы Alice')).not.toBeInTheDocument()
+
+    await user.click(expandGroup)
+
+    expect(screen.getByRole('button', { name: 'Свернуть группу Alice' }))
+      .toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByLabelText('Донаты группы Alice'))
+      .toBeInTheDocument()
+    expect(document.querySelectorAll('.grouped-donation-row')).toHaveLength(2)
+
+    await user.click(screen.getByRole('button', { name: 'Разъединить группу Alice' }))
+
+    expect(document.querySelector('.merged-row')).not.toBeInTheDocument()
+    expect(screen.getAllByText('Alice')).toHaveLength(2)
+  })
+
+  it('restores a named manual group after reload without wiping it during hydration', async () => {
+    const user = userEvent.setup()
+    const entries: ContributionEntry[] = [
+      {
+        id: 'persist-alice',
+        nickname: 'Alice',
+        amountTenths: 100,
+        currency: 'RUB',
+        status: 'active',
+      },
+      {
+        id: 'persist-bob',
+        nickname: 'Bob',
+        amountTenths: 200,
+        currency: 'RUB',
+        status: 'active',
+      },
+    ]
+    const props = {
+      settings: DEFAULT_SETTINGS,
+      onUpdate: vi.fn(),
+      onRemove: vi.fn(),
+      onReorder: vi.fn(),
+    }
+    let view = render(<EntryList entries={entries} {...props} />)
+
+    await user.click(screen.getByRole('button', { name: 'Объединить' }))
+    await user.click(screen.getByLabelText('Выбрать донат Alice для объединения'))
+    await user.click(screen.getByLabelText('Выбрать донат Bob для объединения'))
+    const name = screen.getByLabelText('Название группы')
+    await user.clear(name)
+    await user.type(name, 'Постоянная группа')
+    await user.click(screen.getByRole('button', { name: 'Объединить выбранные' }))
+    expect(screen.getByRole('button', { name: 'Раскрыть группу Постоянная группа' }))
+      .toBeInTheDocument()
+    view.unmount()
+
+    view = render(
+      <EntryList entries={[]} persistenceReady={false} {...props} />,
+    )
+    view.rerender(
+      <EntryList entries={entries} persistenceReady {...props} />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Раскрыть группу Постоянная группа' }))
+      .toBeInTheDocument()
+    expect(document.querySelector('.merged-row')).toHaveTextContent('30.0 RUB')
+  })
+
+  it('restores Auto and keeps an explicitly unmerged run separate after reload', async () => {
+    const user = userEvent.setup()
+    const entries: ContributionEntry[] = [
+      {
+        id: 'persist-auto-1',
+        nickname: 'Alice',
+        amountTenths: 100,
+        currency: 'RUB',
+        status: 'active',
+      },
+      {
+        id: 'persist-auto-2',
+        nickname: 'alice',
+        amountTenths: 200,
+        currency: 'RUB',
+        status: 'active',
+      },
+    ]
+    const props = {
+      entries,
+      settings: DEFAULT_SETTINGS,
+      onUpdate: vi.fn(),
+      onRemove: vi.fn(),
+      onReorder: vi.fn(),
+    }
+    let view = render(<EntryList {...props} />)
+
+    await user.click(screen.getByRole('button', { name: 'Авто: выкл' }))
+    expect(document.querySelector('.merged-row')).toBeInTheDocument()
+    view.unmount()
+
+    view = render(<EntryList {...props} />)
+    expect(screen.getByRole('button', { name: 'Авто: вкл' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(document.querySelector('.merged-row')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Разъединить группу Alice' }))
+    expect(document.querySelector('.merged-row')).not.toBeInTheDocument()
+    view.unmount()
+
+    render(<EntryList {...props} />)
+    expect(screen.getByRole('button', { name: 'Авто: вкл' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(document.querySelector('.merged-row')).not.toBeInTheDocument()
+    expect(screen.getAllByText(/Alice/i)).toHaveLength(2)
+  })
+
+  it('groups different regular names under an editable prefilled group name', async () => {
+    const user = userEvent.setup()
+    const onRemove = vi.fn()
+    const onReorder = vi.fn()
+    const entries: ContributionEntry[] = [
+      {
+        id: 'alice',
+        nickname: 'Alice',
+        amountTenths: 100,
+        currency: 'RUB',
+        status: 'active',
+      },
+      {
+        id: 'bob',
+        nickname: 'Bob',
+        amountTenths: 200,
+        currency: 'RUB',
+        status: 'active',
+      },
+      {
+        id: 'charlie',
+        nickname: 'Charlie',
+        amountTenths: 300,
+        currency: 'RUB',
+        status: 'active',
+      },
+    ]
+
+    render(
+      <EntryList
+        entries={entries}
+        settings={DEFAULT_SETTINGS}
+        onUpdate={vi.fn()}
+        onRemove={onRemove}
+        onReorder={onReorder}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Объединить' }))
+    await user.click(screen.getByLabelText('Выбрать донат Alice для объединения'))
+    await user.click(screen.getByLabelText('Выбрать донат Bob для объединения'))
+
+    const groupName = screen.getByLabelText('Название группы')
+    expect(groupName).toHaveValue('Alice')
+    await user.clear(groupName)
+    await user.type(groupName, 'Команда')
+    await user.click(screen.getByRole('button', { name: 'Объединить выбранные' }))
+
+    const groupRow = document.querySelector('.merged-row')
+    expect(groupRow).toHaveTextContent('Команда')
+    expect(groupRow?.querySelectorAll('.row-index')).toHaveLength(1)
+    expect(screen.getByRole('button', { name: 'Изменить порядок группы Команда' }))
+      .toBeInTheDocument()
+    expect(screen.queryByText('Разъединить')).not.toBeInTheDocument()
+
+    expect(onReorder).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'Изменить группу Команда' }))
+    const editedName = screen.getByLabelText('Название группы')
+    await user.clear(editedName)
+    await user.type(editedName, 'Новая команда')
+    await user.click(screen.getByRole('button', { name: 'Сохранить название группы' }))
+
+    expect(screen.getByText('Новая команда')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Удалить группу Новая команда' }))
+
+    expect(onRemove).toHaveBeenCalledOnce()
+    expect(onRemove).toHaveBeenCalledWith(['alice', 'bob'])
+  })
+
+  it('forces Chat as the group name and rejects mixed Chat attribution', async () => {
+    const user = userEvent.setup()
+    const entries: ContributionEntry[] = [
+      {
+        id: 'regular',
+        nickname: 'Regular',
+        amountTenths: 100,
+        currency: 'RUB',
+        status: 'active',
+      },
+      {
+        id: 'chat-1',
+        nickname: 'Carol',
+        amountTenths: 200,
+        currency: 'RUB',
+        status: 'active',
+        isChat: true,
+      },
+      {
+        id: 'chat-2',
+        nickname: 'Dana',
+        amountTenths: 300,
+        currency: 'RUB',
+        status: 'active',
+        isChat: true,
+      },
+    ]
+
+    const { rerender } = render(
+      <EntryList
+        entries={entries}
+        settings={DEFAULT_SETTINGS}
+        onUpdate={vi.fn()}
+        onRemove={vi.fn()}
+        onReorder={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Объединить' }))
+    await user.click(screen.getByLabelText('Выбрать донат Carol для объединения'))
+    await user.click(screen.getByLabelText('Выбрать донат Dana для объединения'))
+
+    expect(screen.getByLabelText('Название группы')).toHaveValue('Chat')
+    expect(screen.getByLabelText('Название группы')).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'Объединить выбранные' }))
+    expect(screen.getByRole('button', { name: 'Раскрыть группу Chat' }))
+      .toBeInTheDocument()
+
+    rerender(
+      <EntryList
+        entries={entries}
+        settings={DEFAULT_SETTINGS}
+        onUpdate={vi.fn()}
+        onRemove={vi.fn()}
+        onReorder={vi.fn()}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Разъединить группу Chat' }))
+    await user.click(screen.getByRole('button', { name: 'Объединить' }))
+    await user.click(screen.getByLabelText('Выбрать донат Regular для объединения'))
+    await user.click(screen.getByLabelText('Выбрать донат Carol для объединения'))
+    await user.click(screen.getByRole('button', { name: 'Объединить выбранные' }))
+
+    expect(screen.getByText('Нельзя объединять обычные и Chat-донаты в одну группу.'))
+      .toBeInTheDocument()
+    expect(document.querySelector('.merged-row')).not.toBeInTheDocument()
+  })
+
+  it('auto-groups only uninterrupted nickname and Chat runs and can ungroup them', async () => {
+    const user = userEvent.setup()
+    const entries: ContributionEntry[] = [
+      {
+        id: 'alice-1',
+        nickname: 'Alice',
+        amountTenths: 100,
+        currency: 'RUB',
+        status: 'active',
+      },
+      {
+        id: 'alice-2',
+        nickname: ' alice ',
+        amountTenths: 200,
+        currency: 'RUB',
+        status: 'active',
+      },
+      {
+        id: 'gap',
+        nickname: 'Bob',
+        amountTenths: 300,
+        currency: 'RUB',
+        status: 'active',
+      },
+      {
+        id: 'alice-after-gap',
+        nickname: 'Alice',
+        amountTenths: 400,
+        currency: 'RUB',
+        status: 'active',
+      },
+      {
+        id: 'chat-1',
+        nickname: 'Carol',
+        amountTenths: 500,
+        currency: 'RUB',
+        status: 'active',
+        isChat: true,
+      },
+      {
+        id: 'chat-2',
+        nickname: 'Dana',
+        amountTenths: 600,
+        currency: 'RUB',
+        status: 'active',
+        isChat: true,
+      },
+    ]
+
+    const { rerender } = render(
+      <EntryList
+        entries={entries}
+        settings={DEFAULT_SETTINGS}
+        onUpdate={vi.fn()}
+        onRemove={vi.fn()}
+        onReorder={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Авто: выкл' }))
+
+    expect(screen.getByRole('button', { name: 'Авто: вкл' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    const groups = [...document.querySelectorAll('.merged-row')]
+    expect(groups).toHaveLength(2)
+    expect(groups.some((group) => group.textContent?.includes('Alice') &&
+      group.textContent.includes('30.0 RUB'))).toBe(true)
+    expect(groups.some((group) => group.textContent?.includes('Chat') &&
+      group.textContent.includes('110.0 RUB'))).toBe(true)
+    expect(screen.getAllByText('Alice')).toHaveLength(2)
+
+    await user.click(screen.getByRole('button', { name: 'Авто: вкл' }))
+
+    expect(screen.getByRole('button', { name: 'Авто: выкл' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+    expect(document.querySelectorAll('.merged-row')).toHaveLength(2)
+
+    const laterChatDonation: ContributionEntry = {
+      id: 'chat-after-auto-off',
+      nickname: 'Evan',
+      amountTenths: 700,
+      currency: 'RUB',
+      status: 'active',
+      isChat: true,
+    }
+    rerender(
+      <EntryList
+        entries={[...entries, laterChatDonation]}
+        settings={DEFAULT_SETTINGS}
+        onUpdate={vi.fn()}
+        onRemove={vi.fn()}
+        onReorder={vi.fn()}
+      />,
+    )
+
+    expect(document.querySelectorAll('.merged-row')).toHaveLength(2)
+    expect(screen.getByText('Evan')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Разъединить группу Chat' }))
+
+    expect(screen.queryByRole('button', { name: 'Разъединить группу Chat' }))
+      .not.toBeInTheDocument()
+    expect(screen.getByText('Carol')).toBeInTheDocument()
+    expect(screen.getByText('Dana')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Разъединить группу Alice' }))
+      .toBeInTheDocument()
+  })
+
+  it('extends an existing Auto group when a matching donation is inserted before it', async () => {
+    const user = userEvent.setup()
+    const entries: ContributionEntry[] = [
+      {
+        id: 'alice-1',
+        nickname: 'Alice',
+        amountTenths: 100,
+        currency: 'RUB',
+        status: 'active',
+      },
+      {
+        id: 'alice-2',
+        nickname: 'alice',
+        amountTenths: 200,
+        currency: 'RUB',
+        status: 'active',
+      },
+    ]
+    const props = {
+      settings: DEFAULT_SETTINGS,
+      onUpdate: vi.fn(),
+      onRemove: vi.fn(),
+      onReorder: vi.fn(),
+    }
+    const { rerender } = render(<EntryList entries={entries} {...props} />)
+
+    await user.click(screen.getByRole('button', { name: 'Авто: выкл' }))
+    await user.click(screen.getByRole('button', { name: 'Авто: вкл' }))
+
+    rerender(
+      <EntryList
+        entries={[
+          {
+            id: 'alice-restored',
+            nickname: ' ALICE ',
+            amountTenths: 300,
+            currency: 'RUB',
+            status: 'active',
+          },
+          ...entries,
+        ]}
+        {...props}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Авто: выкл' }))
+
+    const group = document.querySelector('.merged-row')
+    expect(group).toHaveTextContent('3 доната')
+    expect(group).toHaveTextContent('60.0 RUB')
+  })
+
+  it('keeps a mixed-name manual group intact while Auto processes nearby rows', async () => {
+    const user = userEvent.setup()
+    const entries: ContributionEntry[] = [
+      {
+        id: 'alice',
+        nickname: 'Alice',
+        amountTenths: 100,
+        currency: 'RUB',
+        status: 'active',
+      },
+      {
+        id: 'bob-1',
+        nickname: 'Bob',
+        amountTenths: 200,
+        currency: 'RUB',
+        status: 'active',
+      },
+      {
+        id: 'bob-2',
+        nickname: 'Bob',
+        amountTenths: 300,
+        currency: 'RUB',
+        status: 'active',
+      },
+      {
+        id: 'bob-3',
+        nickname: 'Bob',
+        amountTenths: 400,
+        currency: 'RUB',
+        status: 'active',
+      },
+    ]
+
+    render(
+      <EntryList
+        entries={entries}
+        settings={DEFAULT_SETTINGS}
+        onUpdate={vi.fn()}
+        onRemove={vi.fn()}
+        onReorder={vi.fn()}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Объединить' }))
+    await user.click(screen.getByLabelText('Выбрать донат Alice для объединения'))
+    const bobCheckboxes = screen.getAllByLabelText('Выбрать донат Bob для объединения')
+    await user.click(bobCheckboxes[0]!)
+    const name = screen.getByLabelText('Название группы')
+    await user.clear(name)
+    await user.type(name, 'Команда')
+    await user.click(screen.getByRole('button', { name: 'Объединить выбранные' }))
+    await user.click(screen.getByRole('button', { name: 'Авто: выкл' }))
+
+    expect(screen.getByRole('button', { name: 'Раскрыть группу Команда' }))
+      .toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Раскрыть группу Bob' }))
+      .toBeInTheDocument()
+    expect(document.querySelectorAll('.merged-row')).toHaveLength(2)
+  })
+
+  it('calculates original donations instead of a visual alias and exposes a split remainder', async () => {
+    const user = userEvent.setup()
+    const entries: ContributionEntry[] = [
+      {
+        id: 'alice',
+        nickname: 'Alice',
+        amountTenths: 40_000,
+        currency: 'RUB',
+        status: 'active',
+      },
+      {
+        id: 'bob',
+        nickname: 'Bob',
+        amountTenths: 20_000,
+        currency: 'RUB',
+        status: 'active',
+      },
+    ]
+    const props = {
+      settings: DEFAULT_SETTINGS,
+      onUpdate: vi.fn(),
+      onRemove: vi.fn(),
+      onReorder: vi.fn(),
+    }
+    const { rerender } = render(<EntryList entries={entries} {...props} />)
+
+    await user.click(screen.getByRole('button', { name: 'Объединить' }))
+    await user.click(screen.getByLabelText('Выбрать донат Alice для объединения'))
+    await user.click(screen.getByLabelText('Выбрать донат Bob для объединения'))
+    const name = screen.getByLabelText('Название группы')
+    await user.clear(name)
+    await user.type(name, 'Команда')
+    await user.click(screen.getByRole('button', { name: 'Объединить выбранные' }))
+
+    let nextId = 0
+    const outcome = calculateRounds(
+      entries,
+      DEFAULT_SETTINGS,
+      1,
+      () => `calculated-${++nextId}`,
+    )
+    expect(outcome.newResults[0]?.winner).toBe('Alice')
+    rerender(<EntryList entries={outcome.entries} {...props} />)
+
+    expect(document.querySelector('.merged-row')).not.toBeInTheDocument()
+    expect(screen.getByText('Bob')).toBeInTheDocument()
+    expect(document.querySelector('.active-total')).toHaveTextContent('1000.0 RUB')
+  })
+
+  it('keeps two surviving members grouped after an earlier member is consumed', async () => {
+    const user = userEvent.setup()
+    const entries: ContributionEntry[] = [
+      {
+        id: 'closer',
+        nickname: 'Closer',
+        amountTenths: 50_000,
+        currency: 'RUB',
+        status: 'active',
+      },
+      {
+        id: 'later-1',
+        nickname: 'Later one',
+        amountTenths: 10_000,
+        currency: 'RUB',
+        status: 'active',
+      },
+      {
+        id: 'later-2',
+        nickname: 'Later two',
+        amountTenths: 10_000,
+        currency: 'RUB',
+        status: 'active',
+      },
+    ]
+    const props = {
+      settings: DEFAULT_SETTINGS,
+      onUpdate: vi.fn(),
+      onRemove: vi.fn(),
+      onReorder: vi.fn(),
+    }
+    const { rerender } = render(<EntryList entries={entries} {...props} />)
+
+    await user.click(screen.getByRole('button', { name: 'Объединить' }))
+    for (const entry of entries) {
+      await user.click(screen.getByLabelText(
+        `Выбрать донат ${entry.nickname} для объединения`,
+      ))
+    }
+    await user.click(screen.getByRole('button', { name: 'Объединить выбранные' }))
+
+    let nextId = 0
+    const outcome = calculateRounds(
+      entries,
+      DEFAULT_SETTINGS,
+      1,
+      () => `calculated-${++nextId}`,
+      1,
+    )
+    rerender(<EntryList entries={outcome.entries} {...props} />)
+
+    const group = document.querySelector('.merged-row')
+    expect(group).toHaveTextContent('2 доната')
+    expect(group).toHaveTextContent('2000.0 RUB')
+    expect(screen.getByRole('button', { name: 'Раскрыть группу Closer' }))
+      .toBeInTheDocument()
+  })
+
+  it('rejects a manual group when matching donations have a gap', async () => {
+    const user = userEvent.setup()
+    const entries: ContributionEntry[] = [
+      {
+        id: 'alice-1',
+        nickname: 'Alice',
+        amountTenths: 100,
+        currency: 'RUB',
+        status: 'active',
+      },
+      {
+        id: 'bob',
+        nickname: 'Bob',
+        amountTenths: 200,
+        currency: 'RUB',
+        status: 'active',
+      },
+      {
+        id: 'alice-2',
+        nickname: 'Alice',
+        amountTenths: 300,
+        currency: 'RUB',
+        status: 'active',
+      },
+    ]
+
+    render(
+      <EntryList
+        entries={entries}
+        settings={DEFAULT_SETTINGS}
+        onUpdate={vi.fn()}
+        onRemove={vi.fn()}
+        onReorder={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Объединить' }))
+    const aliceCheckboxes = screen.getAllByLabelText(
+      'Выбрать донат Alice для объединения',
+    )
+    await user.click(aliceCheckboxes[0]!)
+    await user.click(aliceCheckboxes[1]!)
+    await user.click(screen.getByRole('button', { name: 'Объединить выбранные' }))
+
+    expect(screen.getByText(/Можно объединить только соседние донаты/))
+      .toBeInTheDocument()
+    expect(document.querySelector('.merged-row')).not.toBeInTheDocument()
+  })
+
+  it('shows the converted RUB sum instead of the active-entry count', () => {
+    const entries: ContributionEntry[] = [
+      {
+        id: 'rub',
+        nickname: 'Rub donor',
+        amountTenths: 1_000,
+        currency: 'RUB',
+        status: 'active',
+      },
+      {
+        id: 'eur',
+        nickname: 'Euro donor',
+        amountTenths: 20,
+        currency: 'EUR',
+        status: 'active',
+      },
+    ]
+
+    render(
+      <EntryList
+        entries={entries}
+        settings={{
+          ...DEFAULT_SETTINGS,
+          roundTargetTenths: 1_500,
+          eurRateTenths: 1_000,
+        }}
+        onUpdate={vi.fn()}
+        onRemove={vi.fn()}
+        onReorder={vi.fn()}
+      />,
+    )
+
+    expect(document.querySelector('.active-total')).toHaveTextContent(
+      '300.0 RUB2 гамбашара',
+    )
+    expect(screen.queryByText('2', { selector: '.active-total' }))
+      .not.toBeInTheDocument()
   })
 
   it('shows an imported donation timestamp in Moscow time', () => {
@@ -580,6 +1482,7 @@ describe('collapsible sections', () => {
     expect(historyToggle).toHaveTextContent('2')
     await user.click(historyToggle)
 
+    expect(document.querySelector('.used-history-scroll')).toBeInTheDocument()
     const newerGroup = screen.getByText('Гамбашар 2').closest('.used-round-group')
     const olderGroup = screen.getByText('Гамбашар 1').closest('.used-round-group')
     if (!newerGroup || !olderGroup) throw new Error('Expected both round groups')
@@ -596,5 +1499,80 @@ describe('collapsible sections', () => {
     expect(screen.getByText('Bob').closest('.name-cell')).not.toHaveClass(
       'round-winner',
     )
+  })
+
+  it('places group expand chevron in reorder-cell beside drag handle and aligns names directly', async () => {
+    const user = userEvent.setup()
+    const entries: ContributionEntry[] = [
+      {
+        id: 'solo-1',
+        nickname: 'SoloDonor',
+        amountTenths: 100,
+        currency: 'RUB',
+        status: 'active',
+      },
+      {
+        id: 'group-1',
+        nickname: 'GroupMember1',
+        amountTenths: 100,
+        currency: 'RUB',
+        status: 'active',
+      },
+      {
+        id: 'group-2',
+        nickname: 'GroupMember2',
+        amountTenths: 200,
+        currency: 'RUB',
+        status: 'active',
+      },
+    ]
+
+    render(
+      <EntryList
+        entries={entries}
+        settings={DEFAULT_SETTINGS}
+        onUpdate={vi.fn()}
+        onRemove={vi.fn()}
+        onReorder={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Объединить' }))
+    await user.click(screen.getByLabelText('Выбрать донат GroupMember1 для объединения'))
+    await user.click(screen.getByLabelText('Выбрать донат GroupMember2 для объединения'))
+    await user.click(screen.getByRole('button', { name: 'Объединить выбранные' }))
+
+    const mergedRow = document.querySelector('.merged-row')
+    expect(mergedRow).toBeInTheDocument()
+
+    // Expand toggle (with chevron) is located inside .reorder-cell next to .drag-handle
+    const reorderCell = mergedRow?.querySelector('.reorder-cell')
+    const dragHandle = reorderCell?.querySelector('.drag-handle')
+    const expandToggle = reorderCell?.querySelector('.group-expand-toggle')
+    expect(dragHandle).toBeInTheDocument()
+    expect(expandToggle).toBeInTheDocument()
+    expect(expandToggle?.querySelector('.chevron')).toBeInTheDocument()
+    expect(expandToggle).toHaveAttribute('aria-label', 'Раскрыть группу GroupMember1')
+
+    // Name cell starts directly with entry-nickname (no inline chevron)
+    const mergedNameCell = mergedRow?.querySelector('.name-cell')
+    expect(mergedNameCell?.querySelector('.entry-nickname')?.textContent).toBe('GroupMember1')
+    expect(mergedNameCell?.querySelector('.chevron')).toBeNull()
+
+    // Solo row also has entry-nickname directly inside .name-cell
+    const soloRow = document.querySelector('.active-row:not(.merged-row)')
+    const soloNameCell = soloRow?.querySelector('.name-cell')
+    expect(soloNameCell?.querySelector('.entry-nickname')?.textContent).toBe('SoloDonor')
+    expect(soloNameCell?.querySelector('.chevron')).toBeNull()
+
+    // Clicking the name-cell toggles expansion
+    await user.click(mergedNameCell!)
+    expect(expandToggle).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByLabelText('Донаты группы GroupMember1')).toBeInTheDocument()
+
+    // Clicking again collapses
+    await user.click(mergedNameCell!)
+    expect(expandToggle).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByLabelText('Донаты группы GroupMember1')).not.toBeInTheDocument()
   })
 })

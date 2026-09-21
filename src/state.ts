@@ -14,7 +14,8 @@ export type AppAction =
   | { type: 'entries/import'; entries: ContributionEntry[] }
   | { type: 'entry/update'; entry: ContributionEntry }
   | { type: 'entry/remove'; id: string }
-  | { type: 'entry/reorder'; activeId: string; overId: string }
+  | { type: 'entries/remove'; ids: string[] }
+  | { type: 'entries/reorder'; activeIds: string[] }
   | {
       type: 'calculation/apply'
       entries: ContributionEntry[]
@@ -23,6 +24,7 @@ export type AppAction =
   | { type: 'used/clear' }
   | { type: 'entries/clear' }
   | { type: 'history/clear' }
+  | { type: 'round-history/clear' }
   | { type: 'calculation/run'; maxRounds: 1 | null }
 
 function activeEntries(state: AppState): ContributionEntry[] {
@@ -174,16 +176,26 @@ export function appReducer(state: AppState, action: AppAction): AppState {
           (entry) => entry.id !== action.id || entry.status === 'consumed',
         ),
       }
-    case 'entry/reorder': {
-      if (action.activeId === action.overId) return state
+    case 'entries/remove': {
+      const ids = new Set(action.ids)
+      return {
+        ...state,
+        entries: state.entries.filter(
+          (entry) => !ids.has(entry.id) || entry.status === 'consumed',
+        ),
+      }
+    }
+    case 'entries/reorder': {
       const active = activeEntries(state)
-      const from = active.findIndex((entry) => entry.id === action.activeId)
-      const to = active.findIndex((entry) => entry.id === action.overId)
-      if (from < 0 || to < 0) return state
-      const reordered = [...active]
-      const [moved] = reordered.splice(from, 1)
-      if (!moved) return state
-      reordered.splice(to, 0, moved)
+      if (
+        action.activeIds.length !== active.length ||
+        new Set(action.activeIds).size !== active.length
+      ) return state
+      const activeById = new Map(active.map((entry) => [entry.id, entry]))
+      const reordered = action.activeIds
+        .map((id) => activeById.get(id))
+        .filter((entry): entry is ContributionEntry => Boolean(entry))
+      if (reordered.length !== active.length) return state
       return withActiveEntries(state, reordered)
     }
     case 'calculation/apply':
@@ -204,6 +216,12 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, entries: [] }
     case 'history/clear':
       return { ...state, history: [] }
+    case 'round-history/clear':
+      return {
+        ...state,
+        entries: state.entries.filter((entry) => entry.status === 'active'),
+        history: [],
+      }
     case 'calculation/run':
       return state
   }

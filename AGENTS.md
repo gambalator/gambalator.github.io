@@ -40,15 +40,27 @@ The project is named **Gambalator**. Do not reintroduce the old `Gambulator` spe
 - The UI is desktop-only and intentionally dark. The main palette is muted pink
   (`#fa75db`), yellow, and orange. Healthy connection states are green. Avoid adding
   visual noise or bright backgrounds without an explicit request.
-- The main page order is: header, DonationAlerts integration, donation workspace,
-  collapsed calculation settings, footer. Settings are the last main component.
-- Manual entry, calculation settings, and consumed-donation `ИСТОРИЯ` start collapsed.
-- `История победителей` is separate from consumed-donation `ИСТОРИЯ`. It has a wide
-  modal opened by an icon so long or tied winner names can wrap without truncation.
-- Active donations are displayed newest-first, but this visual reversal must not
-  reverse their calculation order.
+- The main page order is: header controls, winner-history launcher, donation
+  workspace, footer. The header `Меню` opens consumed-donation `ИСТОРИЯ` and
+  `Параметры расчёта` directly in separate scrollable dialogs; neither component
+  remains in the main page flow. DonationAlerts also opens from the header into a modal.
+- Manual entry opens from the right-aligned `+` beside the calculation controls.
+  Consumed history and calculation settings open directly from the header menu.
+- `История победителей` is separate from consumed-donation `ИСТОРИЯ`. Its summary
+  shows the last winner and opens the wide modal directly; it has no inline fold mode.
+  The winner-history cleanup action lives inside that modal.
+- Active donations are displayed oldest-first by default and have a presentation-only
+  newest/oldest switch. Neither visual direction may reverse their calculation order.
+- The orange next-round border follows canonical calculation order, includes the
+  boundary-crossing donation, and is hidden when no complete round is available.
+  A visual group has no default pink treatment; its collapsed row is bordered when any
+  member contributes, while expanded rows mark the exact contributing donations.
 - `src/styles.css` contains the shared visual system. Preserve existing spacing,
   colors, and component hierarchy unless the task explicitly changes them.
+- Keep literal color values inside the commented `EASY THEME SETTINGS` block at the
+  beginning of `src/styles.css`; component rules must use its semantic variables.
+  Preserve searchable aliases with visible button names. All text weights use
+  `--font-weight-all` rather than component-specific numeric weights.
 
 ## Frontend architecture
 
@@ -67,6 +79,9 @@ The project is named **Gambalator**. Do not reintroduce the old `Gambulator` spe
 - `src/domain/moscowTime.ts` isolates Moscow-time input and display behavior.
 - `src/storage/localStorage.ts` validates, migrates, loads, and saves state only for
   the standalone static mode. Local backend mode does not import this data.
+- `src/storage/entryListGrouping.ts` validates versioned browser-local UI state for
+  visual donation groups and Auto merge in both runtime modes. Delay its first write
+  until calculator state hydration finishes so an empty startup render cannot erase it.
 - `src/integrations/calculatorBackend.ts` is the local calculator-state API client.
 - `src/integrations/donationAlerts.ts` contains validated pending/acknowledgement API
   helpers retained for compatibility and focused tests; local `App` mode no longer
@@ -85,7 +100,10 @@ The calculation rules are:
 
 1. Only active entries participate.
 2. Entries are processed in canonical queue order (oldest to newest unless the user
-   explicitly reordered them). The reversed active-list rendering is presentation only.
+   explicitly reordered them). Reversed active-list rendering and active-donation
+   group creation/naming are presentation only. Dragging a group explicitly reorders
+   all of its members as one contiguous block; deleting a group removes its active
+   member entries.
 3. Foreign currencies are converted to RUB using the saved rate and quote-unit size.
 4. The algorithm completes as many whole rounds as the active RUB total permits.
 5. A donation crossing a round boundary is split. The needed part closes the current

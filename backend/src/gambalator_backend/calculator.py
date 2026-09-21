@@ -437,6 +437,20 @@ class CalculatorService:
                     for item in state["entries"]
                     if item["id"] != entry_id or item["status"] == "consumed"
                 ]
+            elif action_type == "entries/remove":
+                entry_ids = payload.get("ids")
+                if (
+                    not isinstance(entry_ids, list)
+                    or any(not isinstance(item, str) for item in entry_ids)
+                    or len(set(entry_ids)) != len(entry_ids)
+                ):
+                    raise CalculatorError("ids must be a unique string list")
+                ids = set(entry_ids)
+                state["entries"] = [
+                    item
+                    for item in state["entries"]
+                    if item["id"] not in ids or item["status"] == "consumed"
+                ]
             elif action_type == "entry/reorder":
                 active_id = payload.get("activeId")
                 over_id = payload.get("overId")
@@ -450,6 +464,24 @@ class CalculatorService:
                 moved = active.pop(source)
                 active.insert(target, moved)
                 state["entries"] = [*consumed, *active]
+            elif action_type == "entries/reorder":
+                active_ids = payload.get("activeIds")
+                active = [item for item in state["entries"] if item["status"] == "active"]
+                consumed = [item for item in state["entries"] if item["status"] == "consumed"]
+                current_ids = [item["id"] for item in active]
+                if (
+                    not isinstance(active_ids, list)
+                    or any(not isinstance(item, str) for item in active_ids)
+                    or len(active_ids) != len(current_ids)
+                    or len(set(active_ids)) != len(active_ids)
+                    or set(active_ids) != set(current_ids)
+                ):
+                    raise CalculatorError("activeIds must contain every active entry exactly once")
+                active_by_id = {item["id"]: item for item in active}
+                state["entries"] = [
+                    *consumed,
+                    *(active_by_id[item_id] for item_id in active_ids),
+                ]
             elif action_type == "calculation/run":
                 limit = payload.get("maxRounds")
                 if isinstance(limit, bool) or limit not in {1, None}:
@@ -460,6 +492,11 @@ class CalculatorService:
             elif action_type == "entries/clear":
                 state["entries"] = []
             elif action_type == "history/clear":
+                state["history"] = []
+            elif action_type == "round-history/clear":
+                state["entries"] = [
+                    item for item in state["entries"] if item["status"] == "active"
+                ]
                 state["history"] = []
             else:
                 raise CalculatorError("unsupported calculator action")
